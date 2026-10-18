@@ -1,0 +1,5 @@
+-r inference.txt
+PyYAML>=6
+psutil>=5.9
+faster-coco-eval>=1.6.5,<2
+matplotlib>=3.8

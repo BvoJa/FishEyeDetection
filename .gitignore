@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+runs/
+prepared/
+predictions/
+*.pth
+*.onnx
+*.pt
+*.cache
+reports/
+models/

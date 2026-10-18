@@ -1,0 +1,16 @@
+# Kaggle supplies a matched PyTorch/torchvision pair. Requires torch >= 2.4.
+numpy>=1.26,<3
+Pillow>=10
+PyYAML>=6
+scipy>=1.11
+faster-coco-eval>=1.6.5,<2
+tensorboard>=2.16
+calflops>=0.3
+transformers>=4.40,<5
+loguru>=0.7
+tqdm>=4.66
+packaging>=23
+onnx>=1.16,<2
+onnxruntime>=1.18,<2
+ultralytics==8.4.182
+torch-pruning==1.6.0

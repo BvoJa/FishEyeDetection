@@ -69,6 +69,39 @@ If no validation split exists, omit the `--val-*` arguments and use `--split cam
 
 Outputs: `data.yaml`, YOLO image/label folders, COCO evaluation JSON under `annotations/`, and `manifest.json`. Image paths in evaluation JSON are relative to the prepared `images/` directory. Default preparation uses symlinks to save Kaggle space; use `--mode copy` for independent image files.
 
+### FishEye8K preset: flap1812/fisheye8k
+
+The [Kaggle dataset](https://www.kaggle.com/datasets/flap1812/fisheye8k) contains
+`Fisheye8K/train/{images,labels,annotations,train.json}` (5,288 images) and
+`Fisheye8K/test/{images,labels,annotations,test.json}` (2,712 images).
+YOLO TXT IDs already match bus, bike, car, pedestrian, truck (0–4). The existing
+YOLO reader supports these five-column normalized labels without conversion rules.
+
+The notebook now defaults to `/kaggle/input/fisheye8k/Fisheye8K`; change `DATA_ROOT`
+if your Kaggle mount path differs. Keep `UNLABELED_IMAGES=None` for the labeled baseline.
+For direct execution from the current project directory:
+
+```bash
+python yolo/prepare_yolo.py --format yolo \
+  --images /kaggle/input/fisheye8k/Fisheye8K/train/images \
+  --labels /kaggle/input/fisheye8k/Fisheye8K/train/labels \
+  --val-images /kaggle/input/fisheye8k/Fisheye8K/test/images \
+  --val-labels /kaggle/input/fisheye8k/Fisheye8K/test/labels \
+  --output /kaggle/working/yolo_workflow/prepared
+
+python yolo/train_yolo.py \
+  --data /kaggle/working/yolo_workflow/prepared/data.yaml \
+  --model yolo11n.pt --image-size 640 --epochs 30 \
+  --batch-size 2 --seed 0 --device 0 \
+  --output /kaggle/working/yolo_workflow/runs/baseline
+```
+
+This follows [AICITY Track 4](https://www.aicitychallenge.org/2025-track4/), which
+uses the original FishEye8K test split as validation. For an untouched FishEye8K
+test set instead, omit the `--val-*` flags, split the original training set by camera,
+and supply `--test-images .../test/images --test-labels .../test/labels`.
+The CLI supports this; the notebook preset uses the AICITY validation convention.
+
 ## **3. Optional D-FINE annotation**
 
 Prepare human splits first so annotation can exclude labeled images and held-out cameras. Choose **dfine-s**, **dfine-m**, **dfine-l**, or **dfine-x**; S is the default. Download the matching checkpoint from the [D-FINE project](https://github.com/Peterande/D-FINE), or attach your own matching checkpoint.

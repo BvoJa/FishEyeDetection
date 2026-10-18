@@ -18,7 +18,7 @@ from efficient_detection.yolo.runtime import decode, letterbox
 from PIL import Image
 
 
-def gold_dataset(tmp_path, format="yolo"):
+def gold_dataset_args(tmp_path, format="yolo"):
     images, labels = tmp_path / "raw/images", tmp_path / "raw/labels"
     images.mkdir(parents=True)
     labels.mkdir(parents=True)
@@ -63,6 +63,11 @@ def gold_dataset(tmp_path, format="yolo"):
         mode="copy",
         output=tmp_path / "prepared",
     )
+    return args
+
+
+def gold_dataset(tmp_path, format="yolo"):
+    args = gold_dataset_args(tmp_path, format)
     prepare(args)
     return args.output
 
@@ -79,6 +84,77 @@ def test_yolo_preparation_and_portable_dataset(tmp_path, format):
     moved = root.with_name("moved")
     root.rename(moved)
     assert dataset_config(moved / "data.yaml")[0] == moved
+
+
+@pytest.mark.parametrize("format", ["yolo", "coco"])
+@pytest.mark.parametrize("split,camera", [("train", 1), ("val", 2)])
+def test_preparation_preserves_same_split_duplicates_and_labels(
+    tmp_path, format, split, camera, capsys
+):
+    args = gold_dataset_args(tmp_path, format)
+    first = args.images[0] / f"camera{camera}_A_1.png"
+    duplicate = args.images[0] / f"camera{camera}_A_2.png"
+    duplicate.write_bytes(first.read_bytes())
+    # Identical images can carry different human annotations; retain both.
+    (args.labels[0] / duplicate.with_suffix(".txt").name).write_text(
+        "0 0.25 0.25 0.2 0.2\n"
+    )
+    annotation = read_json(args.annotations)
+    annotation["annotations"][camera * 2 - 1]["bbox"] = [18, 12, 24, 16]
+    write_json(args.annotations, annotation)
+
+    manifest = prepare(args)
+
+    rows = manifest["splits"][split]
+    assert len(rows) == 2
+    assert rows[0]["sha256"] == rows[1]["sha256"]
+    assert rows[0]["boxes"][0]["bbox"] == [30, 20, 60, 40]
+    assert rows[1]["boxes"][0]["bbox"] == pytest.approx([18, 12, 24, 16])
+    assert len(list((args.output / "labels" / split).rglob("*.txt"))) == 2
+    exported = read_json(args.output / "annotations" / f"{split}.json")
+    assert len(exported["images"]) == len(exported["annotations"]) == 2
+    counts = {"train": 0, "val": 0}
+    counts[split] = 1
+    assert read_json(args.output / "manifest.json")["within_split_duplicates"] == counts
+    assert f"{split}=1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("format", ["yolo", "coco"])
+@pytest.mark.parametrize(
+    "first_split,other_split", [("train", "val"), ("train", "test"), ("val", "test")]
+)
+def test_preparation_rejects_cross_split_duplicates_before_writing(
+    tmp_path, format, first_split, other_split
+):
+    args = gold_dataset_args(tmp_path, format)
+    camera = 1 if first_split == "train" else 2
+    first = args.images[0] / f"camera{camera}_A_1.png"
+    if other_split == "val":
+        duplicate = args.images[0] / "camera2_A_1.png"
+    else:
+        args.test_images = tmp_path / "test/images"
+        args.test_labels = tmp_path / "test/labels"
+        args.test_annotations = tmp_path / "test.json"
+        args.test_images.mkdir(parents=True)
+        args.test_labels.mkdir(parents=True)
+        duplicate = args.test_images / "camera3_A_1.png"
+        (args.test_labels / "camera3_A_1.txt").write_text("0 0.5 0.5 0.5 0.5\n")
+        annotation = read_json(args.annotations)
+        annotation["images"] = [
+            {"id": 1, "file_name": duplicate.name, "width": 120, "height": 80}
+        ]
+        annotation["annotations"] = [annotation["annotations"][0]]
+        write_json(args.test_annotations, annotation)
+    duplicate.write_bytes(first.read_bytes())
+
+    with pytest.raises(
+        ValueError, match="Duplicate image content across dataset splits"
+    ) as error:
+        prepare(args)
+
+    assert f"{first} ({first_split})" in str(error.value)
+    assert f"{duplicate} ({other_split})" in str(error.value)
+    assert not args.output.exists()
 
 
 def test_annotation_class_mapping():

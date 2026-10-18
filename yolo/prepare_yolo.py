@@ -207,23 +207,35 @@ def prepare(args):
     if test is not None:
         splits["test"] = test
     seen = {}
+    within_split_duplicates = dict.fromkeys(splits, 0)
     for split, rows in splits.items():
         if not rows:
             raise ValueError(f"Empty split: {split}")
         names = set()
         for record in rows:
             record["sha256"] = sha256(record["path"])
-            if record["sha256"] in seen:
-                raise ValueError(
-                    f"Duplicate image content across dataset entries: {record['path']} ({seen[record['sha256']]}, {split})"
-                )
-            seen[record["sha256"]] = split
+            previous = seen.get(record["sha256"])
+            if previous is not None:
+                previous_split, previous_path = previous
+                if previous_split != split:
+                    raise ValueError(
+                        "Duplicate image content across dataset splits: "
+                        f"{previous_path} ({previous_split}) and {record['path']} ({split})"
+                    )
+                # Preserve supplied entries and their individual human labels.
+                within_split_duplicates[split] += 1
+            else:
+                seen[record["sha256"]] = (split, record["path"])
             key = Path(record["name"]).with_suffix("").as_posix()
             if key in names:
                 raise ValueError(f"YOLO label filename collision: {key}")
             names.add(key)
     root.mkdir(parents=True, exist_ok=True)
-    manifest = {"classes": CLASSES, "splits": {}}
+    manifest = {
+        "classes": CLASSES,
+        "splits": {},
+        "within_split_duplicates": within_split_duplicates,
+    }
     for split, rows in splits.items():
         manifest["splits"][split] = [
             materialize(record, root, split, args.mode) for record in rows
@@ -238,6 +250,14 @@ def prepare(args):
     if test is not None:
         cfg["test"] = "images/test"
     (root / "data.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    repeated = ", ".join(
+        f"{split}={count}" for split, count in within_split_duplicates.items() if count
+    )
+    if repeated:
+        print(
+            f"Retained repeated-content images within splits: {repeated} "
+            "(original labels preserved)"
+        )
     print(
         f"Prepared {len(train)} training and {len(val)} validation images: {root / 'data.yaml'}"
     )

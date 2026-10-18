@@ -65,6 +65,8 @@ python yolo/prepare_yolo.py --format coco \
 
 Run only the command matching your input format, using an empty output directory. COCO category IDs are remapped by name; person becomes pedestrian, and bicycle/motorcycle become bike. YOLO IDs must already follow the project order. Empty label files are valid negative images; missing labels raise an error.
 
+Byte-identical image files within one split are retained with their individual human labels. Preparation reports counts of additional copies per split in the console and `manifest.json` (`within_split_duplicates`). Identical files across train, validation, or test splits still raise an error listing both paths, before any output is written.
+
 If no validation split exists, omit the `--val-*` arguments and use `--split camera` (default). Whole cameras remain separate. Use `--split random` only when filenames lack camera IDs. Optional `--test-images` and matching `--test-labels`/`--test-annotations` preserve a separate test split.
 
 Outputs: `data.yaml`, YOLO image/label folders, COCO evaluation JSON under `annotations/`, and `manifest.json`. Image paths in evaluation JSON are relative to the prepared `images/` directory. Default preparation uses symlinks to save Kaggle space; use `--mode copy` for independent image files.

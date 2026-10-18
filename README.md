@@ -1,96 +1,81 @@
-# Efficient Detection: YOLO optimization and CPU inference
+# Efficient Detection: YOLO training and CPU inference
 
-Start with [note.md](note.md) for the complete execution guide, or import
-[notebooks/yolo_train.ipynb](notebooks/yolo_train.ipynb) into Kaggle.
+Run from the current `efficient_detection/` directory. Code, requirements, notebooks,
+and documentation can be accessed directly using their relative paths.
+See [note.md](note.md) for the complete workflow.
+
+In a Kaggle cell, clone into the directory name you will use and change to it:
+
+```python
+%cd /kaggle/working
+!git clone https://github.com/BvoJa/FishEyeDetection.git efficient_detection
+%cd /kaggle/working/efficient_detection
+%pip install -r requirements/training.txt
+```
+
+If you are already inside the checkout, start with the dependency installation.
+It registers this flat source layout in editable mode, allowing direct script
+execution while preserving shared imports.
+
+```python
+!python yolo/prepare_yolo.py --help
+!python yolo/train_yolo.py --help
+!python yolo/package_local.py --help
+```
+
+Import [notebooks/yolo_train.ipynb](notebooks/yolo_train.ipynb) or use its cells in
+your Kaggle notebook after changing to this directory. The notebook reads the
+current directory with `Path.cwd()` and runs files such as `yolo/train_yolo.py`
+directly. Enable GPU and Internet and edit the attached dataset/checkpoint paths.
+The notebook leaves cloning and directory selection to your own setup cell.
+
+```text
+efficient_detection/               # Current working directory / Git checkout
+├── yolo/                          # Prepare, annotate, train, prune, export, infer, benchmark, package
+├── dfine/                         # Annotation backend setup and original D-FINE workflow
+├── shared/                        # Dataset readers and common utilities
+├── notebooks/                     # yolo_train.ipynb and dfine_train.ipynb
+├── requirements/                  # training.txt, inference.txt, benchmark.txt
+├── docs/                          # Local deployment guides
+├── tests/
+├── pyproject.toml                 # Import registration for direct script execution
+├── third_party/D-FINE/            # Downloaded only when needed; excluded from Git
+└── note.md
+```
 
 Main capabilities:
 
-- Prepare five-class datasets from YOLO folders or COCO JSON, with camera splits and duplicate-image checks.
-- Generate optional pseudo labels with D-FINE-S/M/L/X, preserving human labels and excluding held-out images/cameras.
-- Train or resume a pretrained YOLO11n baseline using a reproducible seed.
-- Physically prune internal channels at 10%/20% targets, report actual reductions, and validate without recovery training.
-- Export static FP32 ONNX at 512/640/960 and verify predictions against PyTorch.
-- Run local CPU inference with letterboxing, coordinate restoration, class-aware NMS, and annotated/JSON outputs.
-- Compare CPU threads and ONNX Runtime graph optimization, with separate preprocessing/inference/postprocessing timings.
-- Benchmark COCO AP, small-object AP, p50/p95 latency, memory, parameters and model size; select the fastest candidate within 2 AP points of the baseline.
-- Package models, metadata, CPU-only code and optional validation images into a portable local bundle.
+- Prepare YOLO/COCO data with five-class mapping, camera splits, and duplicate checks.
+- Generate optional pseudo labels using D-FINE-S/M/L/X, preserving human labels and held-out splits.
+- Train/resume pretrained YOLO11n and retain its best validation checkpoint.
+- Physically prune internal channels at 10%/20% targets and validate without recovery training.
+- Export static FP32 ONNX at 512/640/960 with PyTorch parity checks.
+- Run CPU inference with RGB letterboxing, coordinate restoration, NMS, and image/JSON outputs.
+- Benchmark AP, small-object AP, stage p50/p95 latency, memory, model size and parameters.
+- Select the lowest pipeline p95 within 2 AP points of the baseline and package models for local use.
 
-```text
-efficient_detection/
-├── yolo/                    # Main YOLO11 workflow and local CPU runtime
-│   ├── generate_pseudo_labels.py
-│   ├── prepare_yolo.py
-│   ├── train_yolo.py
-│   ├── prune_yolo.py
-│   ├── export_yolo.py
-│   ├── infer_yolo.py
-│   ├── benchmark_yolo.py
-│   ├── package_local.py     # Portable models + CPU code + validation data
-│   ├── models.py            # YOLO checkpoint loading/saving
-│   └── runtime.py           # Letterbox, ONNX Runtime, decoding and NMS
-├── dfine/                   # D-FINE annotator and original D-FINE workflow
-│   ├── annotator.py         # S/M/L/X presets and strict checkpoint loading
-│   ├── config.py
-│   ├── prepare_data.py
-│   ├── copy_paste.py
-│   ├── train.py
-│   ├── export_onnx.py
-│   └── infer.py
-├── shared/
-│   ├── common.py            # Class order, hashes, JSON, boxes and metrics
-│   └── datasets.py          # YOLO/COCO readers and camera/random splitting
-├── notebooks/
-│   ├── yolo_train.ipynb   # Recommended YOLO workflow
-│   └── dfine_train.ipynb    # Original D-FINE training workflow
-├── docs/
-│   ├── LOCAL.md             # YOLO local inference and benchmarking
-│   └── DFINE_LOCAL.md       # Original D-FINE local inference
-├── requirements/
-│   ├── training.txt         # Kaggle training, pruning and export
-│   ├── inference.txt        # Minimal local CPU inference dependencies
-│   └── benchmark.txt        # Additional CPU benchmark dependencies
-└── tests/
-```
-
-Use package entrypoints from the **repository root**, so imports resolve consistently:
+D-FINE source is needed only for annotation or original D-FINE training. The
+notebook fetches a pinned revision when needed. For manual use:
 
 ```bash
-python -m pip install -r efficient_detection/requirements/training.txt
-python -m efficient_detection.yolo.prepare_yolo --help
-python -m efficient_detection.yolo.train_yolo --help
-python -m efficient_detection.yolo.package_local --help
+python dfine/setup_backend.py
 ```
 
-Run the YOLO stages in this order:
+An existing D-FINE checkout can be supplied with `--repo-root` to annotation or
+legacy commands. Model configurations are included in this project.
 
-1. Prepare human-labeled splits with `yolo.prepare_yolo`.
-2. Optionally annotate extra training images with `yolo.generate_pseudo_labels`, then merge using `yolo.prepare_yolo --add-pseudo`.
-3. Train the YOLO11n baseline with `yolo.train_yolo`.
-4. Prune each candidate from that baseline using `yolo.prune_yolo`.
-5. Export each model/resolution with `yolo.export_yolo` and build the zip using `yolo.package_local`.
-6. Extract the zip locally, follow `LOCAL.md`, and run `yolo.infer_yolo` or `yolo.benchmark_yolo` through the same `efficient_detection` package.
+Defaults: YOLO11n, 640 pixels, 30 epochs, seed 0; FP32 ONNX at 512/640/960. Classes
+are bus, bike, car, pedestrian, truck (0–4). There is no recovery training,
+INT8 quantization, or knowledge-distillation stage in the YOLO workflow.
 
-D-FINE-S is the default annotator; S/M/L/X checkpoints must match their selected
-architecture. Classes are bus, bike, car, pedestrian, truck (IDs 0–4). Human labels
-take precedence; held-out image hashes and cameras are excluded from pseudo labels.
-
-Defaults: pretrained YOLO11n, 640 pixels, 30 epochs, seed 0; pruning targets 10% and
-20% of eligible internal channels; static FP32 exports at 512/640/960. There is no
-recovery fine-tuning, INT8 quantization, or knowledge-distillation training. Pruning
-reports actual channel/parameter reductions and validates each modified checkpoint.
-
-The CPU benchmark sweeps threads 1/2/4, capped by physical cores. It reports COCO
-AP, small-object AP, model size, parameters, peak process RSS, and stage p50/p95
-latency. Selection uses the lowest pipeline p95 within 2 AP points of the original
-baseline. The original model remains eligible.
-
-Local bundles contain the package files needed for CPU inference/benchmarking,
-ONNX files and metadata, requirements, instructions, and optional independent
-validation image copies. They do not require PyTorch, Ultralytics, or D-FINE weights.
+With the default Kaggle checkout location, outputs are stored next to the checkout:
+`/kaggle/working/yolo_workflow/` and `/kaggle/working/yolo_local.zip`.
+Extract the zip locally and follow `LOCAL.md`; it includes the CPU package layout
+and does not require installing this training project.
 
 ```bash
 python -m pip install pytest
-python -m pytest efficient_detection/tests -q
+python -m pytest tests -q
 ```
 
 References: [D-FINE](https://github.com/Peterande/D-FINE),

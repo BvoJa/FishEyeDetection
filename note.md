@@ -8,7 +8,7 @@ Pruning is evaluated directly: there is **no recovery fine-tuning, INT8 quantiza
 
 ## **1. Which files to run**
 
-All files below are implemented under `efficient_detection/`. Run module commands (`python -m ...`) from the repository root; notebook subprocesses set this directory automatically.
+Run commands from the current `efficient_detection/` checkout. Files such as `yolo/train_yolo.py`, `dfine/setup_backend.py`, and `requirements/training.txt` are relative to this directory.
 
 | File | Purpose | Environment |
 |---|---|---|
@@ -22,40 +22,45 @@ All files below are implemented under `efficient_detection/`. Run module command
 | `yolo/infer_yolo.py` | Predict on an image or image directory | Local CPU |
 | `yolo/benchmark_yolo.py` | Compare accuracy, latency, memory, resolution, and thread settings | Local CPU |
 
-**Simplest route:** import `efficient_detection/notebooks/yolo_train.ipynb` into Kaggle, edit the first configuration cell, and run the cells in order. Download `yolo_local.zip`, then follow `LOCAL.md` inside it. The notebook packages all nine model variants and, by default, copies validation images for local benchmarking.
+**Simplest route:** import `notebooks/yolo_train.ipynb` into Kaggle. Run it after your own clone/cd cell has changed to `efficient_detection/`. The configuration reads `Path.cwd()`; edit the dataset paths and run the cells in order. Download `yolo_local.zip`, then follow `LOCAL.md` inside it. The notebook packages all nine model variants and, by default, copies validation images for local benchmarking.
 
-The separate D-FINE training workflow lives in `efficient_detection/dfine/` and `notebooks/dfine_train.ipynb`. Shared dataset loading and class conventions live in `shared/`; local instructions and dependencies live in `docs/` and `requirements/`. Use the YOLO files listed above for this project.
+The separate D-FINE training workflow lives in `dfine/` and `notebooks/dfine_train.ipynb`. Shared dataset loading and class conventions live in `shared/`; local instructions and dependencies live in `docs/` and `requirements/`. Use the YOLO files listed above for this project.
 
 ## **2. Set up Kaggle and prepare human labels**
 
-Attach this repository, your dataset, and any pretrained checkpoints. Enable a GPU accelerator. Internet is needed to install packages and to download YOLO weights when an attached checkpoint is not supplied.
+Attach your dataset and any pretrained checkpoints. Enable GPU and Internet. Clone the current GitHub project and change to its root before running commands. In a Kaggle cell:
 
-```bash
-python -m pip install -r efficient_detection/requirements/training.txt
+```python
+%cd /kaggle/working
+!git clone https://github.com/BvoJa/FishEyeDetection.git efficient_detection
+%cd /kaggle/working/efficient_detection
+%pip install -r requirements/training.txt
 ```
+
+If you are already inside `efficient_detection/`, run only the dependency installation. The requirements install this project in editable mode so commands such as `python yolo/train_yolo.py` can resolve common imports. No nested `efficient_detection/` source directory or copy step is needed. Dataset paths continue to point to your attached `/kaggle/input/...` files. To update an existing checkout, run `!git pull --ff-only` from its current directory.
 
 Class order: **bus (0), bike (1), car (2), pedestrian (3), truck (4)**.
 
 For YOLO image/label folders:
 
 ```bash
-python -m efficient_detection.yolo.prepare_yolo --format yolo \
+python yolo/prepare_yolo.py --format yolo \
   --images /kaggle/input/fisheye/images/train \
   --labels /kaggle/input/fisheye/labels/train \
   --val-images /kaggle/input/fisheye/images/val \
   --val-labels /kaggle/input/fisheye/labels/val \
-  --output /kaggle/working/prepared
+  --output /kaggle/working/yolo_workflow/prepared
 ```
 
 For COCO JSON annotations:
 
 ```bash
-python -m efficient_detection.yolo.prepare_yolo --format coco \
+python yolo/prepare_yolo.py --format coco \
   --images /kaggle/input/fisheye/images \
   --annotations /kaggle/input/fisheye/train.json \
   --val-images /kaggle/input/fisheye/images \
   --val-annotations /kaggle/input/fisheye/val.json \
-  --output /kaggle/working/prepared
+  --output /kaggle/working/yolo_workflow/prepared
 ```
 
 Run only the command matching your input format, using an empty output directory. COCO category IDs are remapped by name; person becomes pedestrian, and bicycle/motorcycle become bike. YOLO IDs must already follow the project order. Empty label files are valid negative images; missing labels raise an error.
@@ -68,18 +73,21 @@ Outputs: `data.yaml`, YOLO image/label folders, COCO evaluation JSON under `anno
 
 Prepare human splits first so annotation can exclude labeled images and held-out cameras. Choose **dfine-s**, **dfine-m**, **dfine-l**, or **dfine-x**; S is the default. Download the matching checkpoint from the [D-FINE project](https://github.com/Peterande/D-FINE), or attach your own matching checkpoint.
 
+The notebook sets up the pinned D-FINE backend when annotation is enabled. For manual CLI use, run setup first:
+
 ```bash
-python -m efficient_detection.yolo.generate_pseudo_labels \
+python dfine/setup_backend.py
+python yolo/generate_pseudo_labels.py \
   --annotation-model dfine-s \
   --checkpoint /kaggle/input/dfine-weights/dfine_s.pth \
   --images /kaggle/input/additional-training/images \
-  --data /kaggle/working/prepared/data.yaml \
-  --output /kaggle/working/pseudo \
+  --data /kaggle/working/yolo_workflow/prepared/data.yaml \
+  --output /kaggle/working/yolo_workflow/pseudo \
   --confidence 0.5 --device cuda
 
-python -m efficient_detection.yolo.prepare_yolo \
-  --data /kaggle/working/prepared/data.yaml \
-  --add-pseudo /kaggle/working/pseudo
+python yolo/prepare_yolo.py \
+  --data /kaggle/working/yolo_workflow/prepared/data.yaml \
+  --add-pseudo /kaggle/working/yolo_workflow/pseudo
 ```
 
 Replace the example checkpoint filename with your actual file. COCO checkpoints use 80 classes; add `--checkpoint-classes 5` for a custom checkpoint using the five project classes. Architecture mismatches fail rather than partially loading weights.
@@ -89,11 +97,11 @@ Outputs: five-column YOLO labels and `annotations.json` containing scores, sourc
 ## **4. Train YOLO11n once**
 
 ```bash
-python -m efficient_detection.yolo.train_yolo \
-  --data /kaggle/working/prepared/data.yaml \
+python yolo/train_yolo.py \
+  --data /kaggle/working/yolo_workflow/prepared/data.yaml \
   --model yolo11n.pt --image-size 640 --epochs 30 \
   --batch-size 2 --seed 0 --device 0 \
-  --output /kaggle/working/runs/baseline
+  --output /kaggle/working/yolo_workflow/runs/baseline
 ```
 
 Use an attached pretrained `.pt` path instead of `yolo11n.pt` for offline training. The best validation checkpoint is saved as `runs/baseline/weights/best.pt`. Interrupted baseline runs can resume using `--resume /path/to/last.pt`; pruned checkpoints are rejected by the training script.
@@ -101,17 +109,17 @@ Use an attached pretrained `.pt` path instead of `yolo11n.pt` for offline traini
 ## **5. Apply structured pruning without recovery training**
 
 ```bash
-python -m efficient_detection.yolo.prune_yolo \
-  --checkpoint /kaggle/working/runs/baseline/weights/best.pt \
-  --data /kaggle/working/prepared/data.yaml \
+python yolo/prune_yolo.py \
+  --checkpoint /kaggle/working/yolo_workflow/runs/baseline/weights/best.pt \
+  --data /kaggle/working/yolo_workflow/prepared/data.yaml \
   --prune-ratio 0.1 --image-size 640 --device 0 \
-  --output /kaggle/working/runs/pruned10
+  --output /kaggle/working/yolo_workflow/runs/pruned10
 
-python -m efficient_detection.yolo.prune_yolo \
-  --checkpoint /kaggle/working/runs/baseline/weights/best.pt \
-  --data /kaggle/working/prepared/data.yaml \
+python yolo/prune_yolo.py \
+  --checkpoint /kaggle/working/yolo_workflow/runs/baseline/weights/best.pt \
+  --data /kaggle/working/yolo_workflow/prepared/data.yaml \
   --prune-ratio 0.2 --image-size 640 --device 0 \
-  --output /kaggle/working/runs/pruned20
+  --output /kaggle/working/yolo_workflow/runs/pruned20
 ```
 
 Each candidate starts from the original baseline. Dependency-aware pruning physically removes low-magnitude internal bottleneck channels while preserving attention and detection interfaces. Retained channels are rounded to multiples of eight. The requested percentage applies to eligible channels, not total model parameters; actual reductions are recorded in `pruning.json`.
@@ -121,10 +129,10 @@ Each output contains `pruned.pt`, validation results, and a report confirming **
 ## **6. Export FP32 ONNX models**
 
 ```bash
-python -m efficient_detection.yolo.export_yolo \
-  --checkpoint /kaggle/working/runs/baseline/weights/best.pt \
+python yolo/export_yolo.py \
+  --checkpoint /kaggle/working/yolo_workflow/runs/baseline/weights/best.pt \
   --image-size 640 \
-  --output /kaggle/working/models/baseline_640.onnx
+  --output /kaggle/working/yolo_workflow/models/baseline_640.onnx
 ```
 
 Repeat for `runs/pruned10/pruned.pt` and `runs/pruned20/pruned.pt`, and for sizes **512, 640, and 960**, naming outputs `pruned10_512.onnx`, etc. The notebook performs all nine exports automatically.
@@ -134,9 +142,9 @@ The exporter checks the ONNX graph and compares raw predictions with PyTorch. Ad
 To create the same portable bundle from the command line:
 
 ```bash
-python -m efficient_detection.yolo.package_local \
-  --models /kaggle/working/models \
-  --data /kaggle/working/prepared/data.yaml \
+python yolo/package_local.py \
+  --models /kaggle/working/yolo_workflow/models \
+  --data /kaggle/working/yolo_workflow/prepared/data.yaml \
   --output /kaggle/working/yolo_local.zip
 ```
 
@@ -174,7 +182,7 @@ Use validation for selection. If you prepared a separate test split, run the ben
 
 ```bash
 python -m pip install pytest
-python -m pytest efficient_detection/tests -q
+python -m pytest tests -q
 ```
 
 Checks cover input formats, annotation model presets, class mapping, split exclusion, pseudo-label merging, physical pruning, checkpoint reload, rejection of pruned training, letterbox coordinate restoration, AP calculation, and PyTorch–ONNX parity. Small synthetic CPU runs verify the command workflow; real Kaggle training and real-data accuracy must be measured using your dataset.

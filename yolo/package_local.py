@@ -33,7 +33,8 @@ def build_bundle(models, output, data=None):
         if metadata.get("onnx_sha256") != sha256(model):
             raise ValueError(f"ONNX checksum does not match its metadata: {model}")
     output.parent.mkdir(parents=True, exist_ok=True)
-    source = Path(__file__).resolve().parents[1]
+    package = Path(__file__).resolve().parents[1]
+    source = package
     with tempfile.TemporaryDirectory(
         prefix=".yolo-bundle-", dir=output.parent
     ) as temporary:
@@ -49,7 +50,7 @@ def build_bundle(models, output, data=None):
         ]:
             target = root / "efficient_detection" / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source / relative, target)
+            shutil.copy2(package / relative, target)
         for name in ["inference.txt", "benchmark.txt"]:
             target = root / "requirements" / name
             target.parent.mkdir(parents=True, exist_ok=True)

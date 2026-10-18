@@ -3,9 +3,12 @@
 import tempfile
 from pathlib import Path
 
-import yaml
-
-from efficient_detection.dfine.config import DEFAULT_REPO, bootstrap, save_config
+from efficient_detection.dfine.config import (
+    DEFAULT_REPO,
+    base_config,
+    bootstrap,
+    save_config,
+)
 
 
 def annotation_config(variant="dfine-s", classes=80, image_size=640, repo=DEFAULT_REPO):
@@ -14,9 +17,7 @@ def annotation_config(variant="dfine-s", classes=80, image_size=640, repo=DEFAUL
         raise ValueError(f"Unsupported annotation model: {variant}")
     if classes not in {5, 80} or image_size < 256 or image_size % 32:
         raise ValueError("Use 5/80 classes and an image size >=256 divisible by 32")
-    cfg = yaml.safe_load(
-        (Path(repo) / "dfine/configs/dfine/include/dfine_hgnetv2_1600.yml").read_text()
-    )
+    cfg = base_config()
     cfg.update(
         num_classes=classes,
         remap_mscoco_category=False,

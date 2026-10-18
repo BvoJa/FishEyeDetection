@@ -5,8 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from PIL import Image
-
 from efficient_detection.dfine.config import DEFAULT_REPO, build_config
 from efficient_detection.dfine.copy_paste import augment
 from efficient_detection.dfine.infer import postprocess, preprocess
@@ -20,6 +18,7 @@ from efficient_detection.shared.common import (
     write_json,
 )
 from efficient_detection.shared.datasets import load_coco, load_yolo, split_records
+from PIL import Image
 
 
 def make_yolo(tmp_path):
@@ -224,9 +223,8 @@ def test_notebook_is_valid_python_and_contains_no_outputs(filename):
 def test_onnx_runtime_outputs_original_coordinates(tmp_path):
     onnx = pytest.importorskip("onnx")
     pytest.importorskip("onnxruntime")
-    from onnx import TensorProto, helper, numpy_helper
-
     from efficient_detection.dfine.infer import run
+    from onnx import TensorProto, helper, numpy_helper
 
     # An actual ONNX graph scales normalized XYXY boxes by [width,height,width,height].
     constants = [

@@ -4,8 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from PIL import Image
-
 from efficient_detection.dfine.annotator import annotation_config
 from efficient_detection.shared.common import (
     CLASSES,
@@ -17,6 +15,7 @@ from efficient_detection.shared.common import (
 from efficient_detection.yolo.generate_pseudo_labels import candidates, map_detections
 from efficient_detection.yolo.prepare_yolo import merge_pseudo, prepare
 from efficient_detection.yolo.runtime import decode, letterbox
+from PIL import Image
 
 
 def gold_dataset(tmp_path, format="yolo"):
@@ -309,9 +308,8 @@ def test_cpu_coco_accuracy_on_perfect_predictions(tmp_path):
     onnx = pytest.importorskip("onnx")
     pytest.importorskip("onnxruntime")
     pytest.importorskip("faster_coco_eval")
-    from onnx import TensorProto, helper, numpy_helper
-
     from efficient_detection.yolo.benchmark_yolo import accuracy, measure
+    from onnx import TensorProto, helper, numpy_helper
 
     root = gold_dataset(tmp_path)
     _, geometry = letterbox(Image.new("RGB", (120, 80)), 256)

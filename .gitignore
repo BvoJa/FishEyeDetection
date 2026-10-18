@@ -10,3 +10,9 @@ predictions/
 *.cache
 reports/
 models/
+third_party/
+*.zip
+.ruff_cache/
+*.egg-info/
+build/
+dist/

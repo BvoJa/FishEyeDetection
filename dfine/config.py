@@ -6,21 +6,35 @@ from pathlib import Path
 
 import yaml
 
-DEFAULT_REPO = Path(__file__).resolve().parents[2]
+DEFAULT_REPO = Path(__file__).resolve().parents[1]
+DEFAULT_BACKEND = DEFAULT_REPO / "third_party" / "D-FINE"
+
+
+def backend_root(repo_root=DEFAULT_REPO):
+    """Accept the project root or an explicitly supplied D-FINE checkout."""
+    root = Path(repo_root).resolve()
+    for candidate in [root / "third_party/D-FINE", root, root / "dfine"]:
+        if (candidate / "src/core/yaml_config.py").is_file():
+            return candidate
+    raise FileNotFoundError(
+        "D-FINE source is missing. From the efficient_detection directory run "
+        "`python dfine/setup_backend.py`, or pass "
+        "--repo-root /path/to/D-FINE to use an existing checkout."
+    )
+
+
+def base_config():
+    return yaml.safe_load(Path(__file__).with_name("model.yml").read_text())
 
 
 def bootstrap(repo_root):
-    repo_root = Path(repo_root).resolve()
-    if not (repo_root / "dfine/src/core/yaml_config.py").is_file():
-        raise FileNotFoundError(
-            f"{repo_root} must contain this repository's dfine/ directory"
-        )
+    source = backend_root(repo_root)
     import torchvision
 
     # This repository calls the deprecated helper even in recent torchvision.
     if not hasattr(torchvision, "disable_beta_transforms_warning"):
         torchvision.disable_beta_transforms_warning = lambda: None
-    sys.path.insert(0, str(repo_root / "dfine"))
+    sys.path.insert(0, str(source))
     from src.core import YAMLConfig
 
     return YAMLConfig
@@ -44,10 +58,7 @@ def build_config(
     if min(batch_size, epochs) < 1 or not 0 <= final_epochs <= epochs or workers < 0:
         raise ValueError("Invalid batch size, epoch count, final epochs or workers")
     data, output = Path(data).resolve(), Path(output).resolve()
-    model_config = (
-        Path(repo_root) / "dfine/configs/dfine/include/dfine_hgnetv2_1600.yml"
-    )
-    cfg = yaml.safe_load(model_config.read_text())
+    cfg = base_config()
     stop = epochs - final_epochs
     cfg.update(
         {

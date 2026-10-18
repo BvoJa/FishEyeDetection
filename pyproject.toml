@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "efficient-detection"
+version = "0.1.0"
+description = "YOLO training, structured pruning, and local ONNX CPU inference"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["efficient_detection", "efficient_detection.yolo", "efficient_detection.dfine", "efficient_detection.shared"]
+package-dir = {efficient_detection = "."}
+
+[tool.setuptools.package-data]
+efficient_detection = ["docs/*.md", "requirements/*.txt"]
+"efficient_detection.dfine" = ["model.yml"]

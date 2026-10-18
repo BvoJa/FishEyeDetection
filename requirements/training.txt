@@ -1,4 +1,6 @@
 # Kaggle supplies a matched PyTorch/torchvision pair. Requires torch >= 2.4.
+# Run pip from the current efficient_detection checkout; register its flat package layout.
+-e .
 numpy>=1.26,<3
 Pillow>=10
 PyYAML>=6

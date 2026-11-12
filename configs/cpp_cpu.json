@@ -1,0 +1,16 @@
+{
+  "project_root": "..",
+  "model": "models/baseline_640.onnx",
+  "images": "datasets/Fisheye8K/test/images",
+  "annotations": "datasets/Fisheye8K/test/test.json",
+  "output": "reports/cpp_cpu",
+  "threads": 4,
+  "confidence": 0.25,
+  "nms_iou": 0.7,
+  "max_detections": 300,
+  "warmup": 20,
+  "repeats": 1,
+  "max_images": 0,
+  "buffer_mode": "reuse",
+  "dump_tensors": 0
+}

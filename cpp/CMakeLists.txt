@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.20)
+project(efficient_detection_cpp LANGUAGES CXX)
+
+set(ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cpp" CACHE PATH "CPU ONNX Runtime headers/library")
+find_library(ORT_LIBRARY NAMES onnxruntime PATHS "${ORT_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
+add_executable(efficient_infer src/main.cpp)
+target_compile_features(efficient_infer PRIVATE cxx_std_17)
+target_include_directories(efficient_infer SYSTEM PRIVATE "${ORT_ROOT}/include")
+target_link_libraries(efficient_infer PRIVATE "${ORT_LIBRARY}")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(efficient_infer PRIVATE -Wall -Wextra -Wpedantic -fno-fast-math -ffp-contract=off)
+endif()
+set_target_properties(efficient_infer PROPERTIES BUILD_RPATH "${ORT_ROOT}/lib")

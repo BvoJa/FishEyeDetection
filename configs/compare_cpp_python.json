@@ -1,0 +1,21 @@
+{
+  "project_root": "..",
+  "model": "models/baseline_640.onnx",
+  "images": "datasets/Fisheye8K/test/images",
+  "annotations": "datasets/Fisheye8K/test/test.json",
+  "binary": "build/cpp/efficient_infer",
+  "output": "reports/cpp_vs_python",
+  "threads": 4,
+  "confidence": 0.25,
+  "nms_iou": 0.7,
+  "warmup": 20,
+  "trials": 3,
+  "max_images": 100,
+  "seed": 0,
+  "dump_tensors": 4,
+  "compare_fresh_buffers": true,
+  "raw_atol": 0.0001,
+  "raw_rtol": 0.00001,
+  "box_atol": 0.01,
+  "score_atol": 0.00001
+}

@@ -1,0 +1,72 @@
+[
+  {
+    "path": "include/onnxruntime_c_api.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/include/onnxruntime/core/session/onnxruntime_c_api.h",
+    "sha256": "43d584f596ef66820421317df32a79a95fc1d39ee46cb3971a870c08d8ba4baa"
+  },
+  {
+    "path": "include/onnxruntime_cxx_api.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/include/onnxruntime/core/session/onnxruntime_cxx_api.h",
+    "sha256": "1e80d494c47091b07d84de60ad570326f82ed841c6de66e5b3eb7dce17bfc467"
+  },
+  {
+    "path": "include/onnxruntime_cxx_inline.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/include/onnxruntime/core/session/onnxruntime_cxx_inline.h",
+    "sha256": "908a50414c3f67f32fd556cd16f7779fa78380e12e9d08e44f5e6f66b965a7be"
+  },
+  {
+    "path": "include/onnxruntime_float16.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/include/onnxruntime/core/session/onnxruntime_float16.h",
+    "sha256": "88b242845d25981633a0bbd1c148e273cf8bfb016ea3f57c4af41a06530f72b0"
+  },
+  {
+    "path": "include/onnxruntime_ep_c_api.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/include/onnxruntime/core/session/onnxruntime_ep_c_api.h",
+    "sha256": "b64036772115dbc6f06a900487ce22d34e862100db03e2ad62210758e27a19b2"
+  },
+  {
+    "path": "include/nlohmann/json.hpp",
+    "url": "https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp",
+    "sha256": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6"
+  },
+  {
+    "path": "include/stb_image.h",
+    "url": "https://raw.githubusercontent.com/nothings/stb/f58f558c120e9b32c217290b80bad1a0729fbb2c/stb_image.h",
+    "sha256": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3"
+  },
+  {
+    "path": "licenses/onnxruntime.txt",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/LICENSE",
+    "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+  },
+  {
+    "path": "licenses/json.txt",
+    "url": "https://raw.githubusercontent.com/nlohmann/json/v3.11.3/LICENSE.MIT",
+    "sha256": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14"
+  },
+  {
+    "path": "licenses/pillow.txt",
+    "url": "https://raw.githubusercontent.com/python-pillow/Pillow/12.3.0/LICENSE",
+    "sha256": "15181e7363dca9aed78b79bebebc7fde7f1814b8bd311ea3b87ae8ccadfc185b"
+  },
+  {
+    "path": "reference/Resample.c",
+    "url": "https://raw.githubusercontent.com/python-pillow/Pillow/12.3.0/src/libImaging/Resample.c",
+    "sha256": "808c212d03289b9ab70fad67168da1b14ed8dd74f1607c7a7278c50cbc1ae0ab"
+  },
+  {
+    "path": "include/onnxruntime_error_code.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/include/onnxruntime/core/session/onnxruntime_error_code.h",
+    "sha256": "5ce3b054e798eced8d14f5b86e98692fd33470463f96194ce0700a2d53dd8721"
+  },
+  {
+    "path": "include/picosha2.h",
+    "url": "https://raw.githubusercontent.com/okdshin/PicoSHA2/v1.0.1/picosha2.h",
+    "sha256": "b13c180161ffac8d0adc81e033e493c409457c4d1258ab9781ac80579ba3bdd8"
+  },
+  {
+    "path": "licenses/picosha2.txt",
+    "url": "https://raw.githubusercontent.com/okdshin/PicoSHA2/v1.0.1/LICENSE",
+    "sha256": "6c30eb1f37554ec4199cb82a8c86d9e7a852da78a757832bebb03ac9ddc44ff1"
+  }
+]

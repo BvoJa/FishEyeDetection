@@ -15,3 +15,6 @@ package-dir = {efficient_detection = "."}
 [tool.setuptools.package-data]
 efficient_detection = ["docs/*.md", "requirements/*.txt"]
 "efficient_detection.dfine" = ["model.yml"]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]

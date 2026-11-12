@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 runs/
 prepared/
+datasets/
 predictions/
 *.pth
 *.onnx

@@ -116,7 +116,9 @@ class YoloSession:
         self.input_name = inputs[0].name
         self.image_size = size
 
-    def predict(self, image, confidence=0.25, nms_iou=0.7, multi_label=False):
+    def predict(
+        self, image, confidence=0.25, nms_iou=0.7, multi_label=False, return_raw=False
+    ):
         started = time.perf_counter()
         pixels, geometry = letterbox(image, self.image_size)
         preprocessed = time.perf_counter()
@@ -130,4 +132,8 @@ class YoloSession:
             "postprocess": (completed - inferred) * 1000,
             "pipeline": (completed - started) * 1000,
         }
+        if return_raw:
+            # Evaluation can reuse this forward pass for low-confidence COCO AP.
+            result["raw"] = raw
+            result["geometry"] = geometry
         return result

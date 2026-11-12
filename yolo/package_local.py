@@ -47,6 +47,8 @@ def build_bundle(models, output, data=None):
             "yolo/benchmark_yolo.py",
             "shared/__init__.py",
             "shared/common.py",
+            "shared/evaluation.py",
+            "shared/performance.py",
         ]:
             target = root / "efficient_detection" / relative
             target.parent.mkdir(parents=True, exist_ok=True)

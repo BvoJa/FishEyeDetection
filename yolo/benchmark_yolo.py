@@ -12,7 +12,6 @@ import time
 import traceback
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 from efficient_detection.shared.common import (
@@ -21,19 +20,23 @@ from efficient_detection.shared.common import (
     sha256,
     write_json,
 )
+from efficient_detection.shared.evaluation import evaluate_predictions
+from efficient_detection.shared.performance import (
+    FPS_SCOPES,
+    throughput_fps,
+    timing_statistics,
+)
 from efficient_detection.yolo.runtime import YoloSession
 
 
 def accuracy(model, root, split="val", threads=4):
-    from faster_coco_eval import COCO, COCOeval_faster
-
     annotation = root / "annotations" / f"{split}.json"
-    truth = COCO(str(annotation))
-    if not any(not ann.get("iscrowd", 0) for ann in truth.dataset["annotations"]):
+    truth = read_json(annotation)
+    if not any(not ann.get("iscrowd", 0) for ann in truth["annotations"]):
         raise ValueError(f"{split} needs labeled non-crowd objects for AP evaluation")
     session = YoloSession(model, threads)
     detections = []
-    for image in truth.dataset["images"]:
+    for image in truth["images"]:
         with Image.open(root / "images" / image["file_name"]) as source:
             result = session.predict(
                 source.convert("RGB"), confidence=0.001, multi_label=True
@@ -50,26 +53,7 @@ def accuracy(model, root, split="val", threads=4):
                     "score": float(score),
                 }
             )
-    if detections:
-        predicted = truth.loadRes(detections)
-    else:
-        predicted = COCO()
-        predicted.dataset = {
-            "images": truth.dataset["images"],
-            "categories": truth.dataset["categories"],
-            "annotations": [],
-        }
-        predicted.createIndex()
-    evaluator = COCOeval_faster(truth, predicted, "bbox")
-    evaluator.evaluate()
-    evaluator.accumulate()
-    evaluator.summarize()
-    return dict(
-        zip(
-            ["AP", "AP50", "AP75", "AP_small", "AP_medium", "AP_large"],
-            map(float, evaluator.stats[:6]),
-        )
-    )
+    return evaluate_predictions(annotation, detections)[0]
 
 
 def measure(
@@ -123,10 +107,11 @@ def measure(
         "cached_images": len(images),
     }
     for stage in timings[0]:
-        values = [row[stage] for row in timings]
-        result[stage + "_p50_ms"] = float(np.percentile(values, 50))
-        result[stage + "_p95_ms"] = float(np.percentile(values, 95))
-    result["pipeline_fps"] = 1000 / np.mean([row["pipeline"] for row in timings])
+        stats = timing_statistics([row[stage] for row in timings])
+        for statistic in ["mean_ms", "p50_ms", "p95_ms"]:
+            result[f"{stage}_{statistic}"] = stats[statistic]
+    for stage in ["inference", "pipeline"]:
+        result[stage + "_fps"] = throughput_fps(row[stage] for row in timings)
     if profile:
         # Profiling runs outside timed iterations and memory measurements.
         diagnostic = YoloSession(model, threads, optimization, profile=profile)
@@ -212,7 +197,7 @@ def plot_results(rows, target):
             fontsize=8,
         )
     axis.set(
-        xlabel="End-to-end p95 latency (ms)",
+        xlabel="Pipeline p95 latency (ms; excludes image I/O)",
         ylabel="COCO AP50:95 (%)",
         title="YOLO11 CPU accuracy–latency tradeoff",
     )
@@ -346,6 +331,10 @@ def main():
                         **measured,
                     }
                 )
+                print(
+                    f"FPS: inference={measured['inference_fps']:.2f}, pipeline={measured['pipeline_fps']:.2f} (cached RGB inputs; excludes image I/O)",
+                    flush=True,
+                )
     if args.split == "val":
         best = select_candidate(rows, args.baseline, args.accuracy_budget)
         write_json(args.output / "selection.json", best)
@@ -379,6 +368,12 @@ def main():
                 "trials": args.trials,
             },
             "timing_scope": "RGB preprocessing + inference + NMS; excludes image decoding/writing and session startup",
+            "fps_scope": {
+                key: value
+                for key, value in FPS_SCOPES.items()
+                if key in {"inference_fps", "pipeline_fps"}
+            },
+            "fps_aggregation": "Timed image count / sum of measured stage seconds after warm-up; cached RGB inputs, batch 1; per-image reciprocals are not averaged",
             "memory_scope": "Peak sampled process RSS including session startup, warm-up and cached RGB inputs; excludes accuracy/profiling passes",
         },
     )

@@ -1,12 +1,17 @@
 """Run a five-class YOLO11 ONNX model locally on CPU without PyTorch."""
 
 import argparse
+import time
 from pathlib import Path
 
-import numpy as np
 from PIL import Image, ImageDraw
 
 from efficient_detection.shared.common import CLASSES, EXTENSIONS, read_json, write_json
+from efficient_detection.shared.performance import (
+    FPS_SCOPES,
+    throughput_fps,
+    timing_statistics,
+)
 from efficient_detection.yolo.runtime import YoloSession
 
 
@@ -51,20 +56,29 @@ def run(
         ]
     if not records:
         raise ValueError("No input images")
-    session = YoloSession(model, threads, optimization)
-    predictions, manifest, timings = [], [], []
-    for index, record in enumerate(records, 1):
+
+    def image_path(record):
         relative = Path(record["file_name"])
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError("Image names must be relative paths within the image root")
-        path = images / relative if images.is_dir() else images
-        with Image.open(path) as source:
+        return images / relative if images.is_dir() else images
+
+    session = YoloSession(model, threads, optimization)
+    with Image.open(image_path(records[0])) as source:
+        warmup_image = source.convert("RGB")
+    for _ in range(3):
+        session.predict(warmup_image, confidence)
+    del warmup_image
+    predictions, manifest, timings = [], [], []
+    dataset_started = time.perf_counter()
+    for index, record in enumerate(records, 1):
+        request_started = time.perf_counter()
+        relative = Path(record["file_name"])
+        with Image.open(image_path(record)) as source:
             image = source.convert("RGB")
-        if index == 1:
-            for _ in range(3):
-                session.predict(image, confidence)
         result = session.predict(image, confidence)
-        timings.append(result["timing_ms"])
+        request_ms = (time.perf_counter() - request_started) * 1000
+        timings.append({**result["timing_ms"], "request": request_ms})
         manifest.append(
             {
                 "id": record["id"],
@@ -101,21 +115,39 @@ def run(
             f"{index}/{len(records)} {relative}: {len(result['labels'])} detections",
             flush=True,
         )
+    dataset_seconds = time.perf_counter() - dataset_started
     summary = {
         "images": len(records),
         "threads": threads,
         "graph_optimization": optimization,
         "provider": "CPUExecutionProvider",
         "confidence": confidence,
-        "timing_scope": "RGB preprocessing + inference + NMS; excludes image I/O and warm-up",
+        "warmup": 3,
+        "batch_size": 1,
+        "dataset_pass_seconds": dataset_seconds,
+        "dataset_fps": len(records) / dataset_seconds,
+        "save_images": save_images,
+        **{
+            f"{stage}_fps": throughput_fps(row[stage] for row in timings)
+            for stage in ["inference", "pipeline", "request"]
+        },
+        "fps_scope": {
+            **FPS_SCOPES,
+            "dataset_fps": "Wall-clock image loop including prediction formatting, progress logging and optional image drawing/writing; excludes startup, warm-up and final JSON writing",
+        },
+        "timing_scope": "Pipeline covers RGB preprocessing + inference + NMS; request additionally includes image reading/decoding; both exclude warm-up and file writing",
     }
     for stage in timings[0]:
-        values = [row[stage] for row in timings]
-        summary[stage + "_p50_ms"] = float(np.percentile(values, 50))
-        summary[stage + "_p95_ms"] = float(np.percentile(values, 95))
+        stats = timing_statistics([row[stage] for row in timings])
+        for statistic in ["mean_ms", "p50_ms", "p95_ms"]:
+            summary[f"{stage}_{statistic}"] = stats[statistic]
     write_json(output / "predictions.json", predictions)
     write_json(output / "images.json", manifest)
     write_json(output / "summary.json", summary)
+    print(
+        f"FPS: inference={summary['inference_fps']:.2f}, pipeline={summary['pipeline_fps']:.2f}, request={summary['request_fps']:.2f}, dataset pass={summary['dataset_fps']:.2f}",
+        flush=True,
+    )
     return predictions
 
 

@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Efficient Detection — project overview</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --line: #2a3040;
+    --text: #e6e9ef;
+    --muted: #98a2b3;
+    --accent: #6ee7b7;
+    --accent-2: #7dd3fc;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px 80px; }
+  header {
+    padding: 56px 0 32px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 40px;
+  }
+  h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h2 { font-size: 1.3rem; margin: 48px 0 16px; letter-spacing: -0.01em; }
+  h3 { font-size: 1rem; margin: 0 0 8px; }
+  p { margin: 0 0 14px; }
+  .lead { color: var(--muted); font-size: 1.05rem; max-width: 72ch; }
+  .pill {
+    display: inline-block; font-size: .78rem; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--accent);
+    border: 1px solid rgba(110,231,183,.35); background: rgba(110,231,183,.08);
+    border-radius: 999px; padding: 3px 10px; margin-bottom: 16px;
+  }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+  nav a {
+    color: var(--muted); text-decoration: none; font-size: .88rem;
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px;
+    background: var(--panel);
+  }
+  nav a:hover { color: var(--text); border-color: #3b4358; }
+  .grid { display: grid; gap: 14px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .g4 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px;
+  }
+  .card p { margin: 0; color: var(--muted); font-size: .93rem; }
+  .metric .v { font-size: 1.6rem; font-weight: 650; color: var(--accent); letter-spacing: -0.02em; }
+  .metric .l { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+  .metric .s { color: #6b7488; font-size: .78rem; margin-top: 4px; }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .86rem;
+  }
+  code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; overflow-x: auto; margin: 0 0 16px;
+  }
+  pre code { background: none; border: 0; padding: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; margin-bottom: 8px; }
+  th, td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  thead th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+  tbody tr:hover { background: rgba(255,255,255,.02); }
+  .scroll { overflow-x: auto; }
+  .bar-row { display: grid; grid-template-columns: 130px 1fr 90px; align-items: center; gap: 12px; margin-bottom: 8px; font-size: .88rem; }
+  .bar-track { background: var(--panel-2); border-radius: 6px; height: 22px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; }
+  .bar-row span:last-child { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .flow .step {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    padding: 9px 13px; font-size: .88rem;
+  }
+  .flow .step b { color: var(--accent-2); font-weight: 600; }
+  .flow .arrow { color: #4b5468; }
+  .tree { color: var(--muted); line-height: 1.75; font-size: .88rem; white-space: pre; overflow-x: auto; }
+  .tree b { color: var(--text); font-weight: 600; }
+  .note {
+    border-left: 3px solid var(--warn); background: rgba(251,191,36,.06);
+    padding: 12px 16px; border-radius: 0 8px 8px 0; color: var(--muted); font-size: .92rem;
+  }
+  .note b { color: var(--text); }
+  details.deep {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; margin-top: 28px; overflow: hidden;
+  }
+  details.deep > summary {
+    cursor: pointer; list-style: none; padding: 16px 20px;
+    background: var(--panel-2); border-bottom: 1px solid transparent;
+    font-weight: 600; color: var(--accent-2); display: flex;
+    align-items: center; gap: 10px; user-select: none;
+  }
+  details.deep > summary::-webkit-details-marker { display: none; }
+  details.deep > summary::before { content: "▸"; color: var(--muted); font-size: .9rem; }
+  details.deep[open] > summary::before { content: "▾"; }
+  details.deep[open] > summary { border-bottom-color: var(--line); }
+  details.deep > summary:hover { color: var(--accent); }
+  details.deep .body { padding: 20px; }
+  details.deep .body > :first-child { margin-top: 0; }
+  details.deep h3 { margin: 26px 0 10px; color: var(--text); font-size: .98rem; }
+  details.deep h3:first-of-type { margin-top: 0; }
+  details.deep p, details.deep li { color: var(--muted); font-size: .93rem; }
+  details.deep ul, details.deep ol { margin: 0 0 14px; padding-left: 22px; }
+  details.deep li { margin-bottom: 5px; }
+  details.deep li b, details.deep td b { color: var(--text); font-weight: 600; }
+  details.deep td { color: var(--muted); }
+  details.deep pre { margin-bottom: 14px; }
+  details.deep table { margin-bottom: 14px; }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: #6b7488; font-size: .82rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="pill">FishEye8K · YOLO11n · ONNX CPU</div>
+  <h1>Efficient Detection</h1>
+  <p class="lead">
+    Train a small object detector on fisheye traffic footage, prune it, export it to ONNX,
+    and run it fast on a plain CPU. The project also ships a native C++ runtime that is
+    measured against the Python path on the same model and the same images.
+  </p>
+  <nav>
+    <a href="#what">What it does</a>
+    <a href="#pipeline">Pipeline</a>
+    <a href="#layout">Repo layout</a>
+    <a href="#results">Measured results</a>
+    <a href="#cpp">Python vs C++</a>
+    <a href="#cpp-runtime">C++ internals</a>
+    <a href="#run">How to run</a>
+    <a href="#limits">Limits</a>
+  </nav>
+</header>
+
+<h2 id="what">What it does</h2>
+<div class="grid g2">
+  <div class="card">
+    <h3>Five traffic classes</h3>
+    <p>bus (0), bike (1), car (2), pedestrian (3), truck (4). COCO and YOLO inputs are mapped to this fixed order, with camera-aware splits and duplicate checks.</p>
+  </div>
+  <div class="card">
+    <h3>Small model, CPU first</h3>
+    <p>YOLO11n at 640 px, FP32 ONNX. Roughly 2.6 M parameters and a 10 MiB file, so it fits an edge box with no GPU.</p>
+  </div>
+  <div class="card">
+    <h3>Physical pruning, no recovery</h3>
+    <p>Channels are removed at 10% and 20% targets and the pruned checkpoint is validated as-is. There is no fine-tuning, no INT8, no distillation stage.</p>
+  </div>
+  <div class="card">
+    <h3>Two independent runtimes</h3>
+    <p>Python inference and a native C++ executable with reusable tensors. They are checked against each other instead of sharing code, so parity means something.</p>
+  </div>
+</div>
+
+<h2 id="pipeline">Pipeline</h2>
+<div class="flow">
+  <div class="step"><b>1.</b> Prepare labels</div><span class="arrow">→</span>
+  <div class="step"><b>2.</b> Optional D-FINE pseudo labels</div><span class="arrow">→</span>
+  <div class="step"><b>3.</b> Train / resume YOLO11n</div><span class="arrow">→</span>
+  <div class="step"><b>4.</b> Prune channels</div><span class="arrow">→</span>
+  <div class="step"><b>5.</b> Export ONNX 512/640/960</div><span class="arrow">→</span>
+  <div class="step"><b>6.</b> Benchmark on CPU</div><span class="arrow">→</span>
+  <div class="step"><b>7.</b> Package / Docker</div>
+</div>
+<p style="margin-top:16px;color:var(--muted);font-size:.93rem">
+  Training runs on Kaggle GPU. Steps 5 to 7 and all measurement run locally on CPU.
+  D-FINE is optional: only needed to generate hard pseudo labels or to reproduce the
+  original D-FINE workflow.
+</p>
+
+<h2 id="layout">Repo layout</h2>
+<div class="card">
+<div class="tree"><b>efficient_detection/</b>
+├── <b>yolo/</b>            prepare, train, prune, export, infer, benchmark, package
+├── <b>dfine/</b>           annotation backend setup, copy-paste, D-FINE train/export
+├── <b>shared/</b>          dataset readers, COCO evaluation, metrics, latency stats
+├── <b>cpp/</b>             native ONNX Runtime runtime, CMake preset, build helper
+├── <b>configs/</b>         cpp_cpu.json, compare_cpp_python.json
+├── <b>models/</b>          baseline_640.onnx (selected model)
+├── <b>notebooks/</b>       yolo_train.ipynb, dfine_train.ipynb
+├── <b>requirements/</b>    training, inference, benchmark, cpp, evaluation
+├── <b>docs/</b>            LOCAL, CPP, CPP_RESULTS, DOCKER, DFINE, AUDIT
+├── <b>reports/</b>         measured runs (JSON, CSV, report.md)
+├── <b>tests/</b>           pytest suite for workflow and runtime
+├── pyproject.toml        editable install for direct script execution
+├── note.md               full workflow notes
+└── README.md</div>
+</div>
+
+<h2 id="results">Measured results</h2>
+<p style="color:var(--muted);font-size:.92rem">
+  Full FishEye8K test split, FP32 640 px, batch 1, 4 CPU threads, 2712 images,
+  confidence 0.25, NMS IoU 0.7.
+</p>
+<div class="grid g4">
+  <div class="card metric"><div class="l">AP50:95</div><div class="v">22.79%</div><div class="s">COCO primary</div></div>
+  <div class="card metric"><div class="l">AP50</div><div class="v">39.41%</div><div class="s">fixed 0.5 IoU</div></div>
+  <div class="card metric"><div class="l">Precision</div><div class="v">54.75%</div><div class="s">at 0.25 conf</div></div>
+  <div class="card metric"><div class="l">Recall</div><div class="v">48.26%</div><div class="s">at 0.25 conf</div></div>
+  <div class="card metric"><div class="l">F1 micro</div><div class="v">51.30%</div><div class="s">TP 21,785 · FP 18,003 · FN 23,360</div></div>
+  <div class="card metric"><div class="l">Pipeline</div><div class="v">15.33</div><div class="s">images/s, 65.2 ms mean</div></div>
+  <div class="card metric"><div class="l">Request</div><div class="v">9.45</div><div class="s">images/s incl. decode</div></div>
+  <div class="card metric"><div class="l">Model size</div><div class="v">10.03</div><div class="s">MiB · 2,605,855 params</div></div>
+</div>
+
+<h3 style="margin-top:28px">Per-class accuracy</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>Class</th><th>GT objects</th><th>AP50:95</th><th>AP50</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+  <tbody>
+    <tr><td>bus</td><td>930</td><td>31.78%</td><td>48.15%</td><td>37.75%</td><td>49.89%</td><td>42.98%</td></tr>
+    <tr><td>bike</td><td>26,270</td><td>21.29%</td><td>49.50%</td><td>53.92%</td><td>49.99%</td><td>51.88%</td></tr>
+    <tr><td>car</td><td>14,113</td><td>32.96%</td><td>56.52%</td><td>65.58%</td><td>52.38%</td><td>58.24%</td></tr>
+    <tr><td>pedestrian</td><td>2,633</td><td>4.83%</td><td>12.63%</td><td>22.02%</td><td>16.18%</td><td>18.65%</td></tr>
+    <tr><td>truck</td><td>1,199</td><td>23.07%</td><td>30.28%</td><td>37.17%</td><td>30.94%</td><td>33.77%</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 style="margin-top:28px">Where the time goes (mean per image)</h3>
+<div class="bar-row"><span>Image decode</span><div class="bar-track"><div class="bar-fill" style="width:100%;background:#7dd3fc"></div></div><span>40.35 ms</span></div>
+<div class="bar-row"><span>Inference</span><div class="bar-track"><div class="bar-fill" style="width:75%;background:#6ee7b7"></div></div><span>45.54 ms</span></div>
+<div class="bar-row"><span>Preprocess</span><div class="bar-track"><div class="bar-fill" style="width:30%;background:#a78bfa"></div></div><span>18.30 ms</span></div>
+<div class="bar-row"><span>Postprocess</span><div class="bar-track"><div class="bar-fill" style="width:3%;background:#fbbf24"></div></div><span>1.38 ms</span></div>
+<p style="color:var(--muted);font-size:.86rem;margin-top:12px">
+  Model execution is only ~43% of the request. Decoding JPEGs costs nearly as much as
+  running the network, which is why request FPS (9.45) is well below inference FPS (21.96).
+</p>
+
+<h2 id="cpp">Python vs native C++</h2>
+<p style="color:var(--muted);font-size:.92rem">
+  100 validation images, seed 0, 20 warm-ups, 3 trials with rotated backend order,
+  Intel Core i7-1360P, ONNX Runtime 1.31.0 for both backends.
+</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>Backend</th><th>Pipeline mean</th><th>Pipeline p95</th><th>Pipeline FPS</th><th>Request FPS</th><th>Peak RSS</th></tr></thead>
+  <tbody>
+    <tr><td>Python</td><td>74.22 ms</td><td>108.59 ms</td><td>13.47</td><td>9.51</td><td>203.64 MiB</td></tr>
+    <tr><td>C++ fresh tensors</td><td>64.15 ms</td><td>87.67 ms</td><td>15.59</td><td>10.66</td><td>152.30 MiB</td></tr>
+    <tr><td>C++ reusable tensors</td><td>58.82 ms</td><td>75.79 ms</td><td>17.00</td><td>11.27</td><td>142.35 MiB</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="grid g3" style="margin-top:14px">
+  <div class="card"><h3>1.262×</h3><p>Python / C++ reuse, pipeline latency</p></div>
+  <div class="card"><h3>1,417</h3><p>detections matching across all backends and trials, zero coordinate or score difference</p></div>
+  <div class="card"><h3>1 vs 120</h3><p>tensor allocations per trial in reuse mode vs fresh mode</p></div>
+</div>
+
+<details class="deep" id="cpp-runtime">
+<summary>Native C++ runtime — detailed walkthrough</summary>
+<div class="body">
+
+<p>
+  Everything lives in one file: <code>cpp/src/main.cpp</code>, 448 lines of C++17 with no
+  framework. It builds one executable, <code>build/cpp/efficient_infer</code>, which reads a
+  JSON config, runs a static YOLO11 ONNX model over a list of images and writes JSON reports.
+  It does no drawing, no COCO AP computation and no training.
+</p>
+
+<h3>Dependencies and why they are pinned</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>Library</th><th>Role</th><th>Source</th></tr></thead>
+  <tbody>
+    <tr><td><b>ONNX Runtime 1.31.0</b></td><td>model execution, C++ API</td><td>the exact <code>.so</code> shipped in the Python venv, so the runtime version is identical to the Python path</td></tr>
+    <tr><td><b>nlohmann/json 3.11.3</b></td><td>config, metadata, report JSON</td><td>single header</td></tr>
+    <tr><td><b>stb_image</b></td><td>PNG/JPEG/BMP decode</td><td>single header, pinned commit</td></tr>
+    <tr><td><b>picosha2</b></td><td>SHA-256 of model file</td><td>single header</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+  <code>cpp/dependencies.lock.json</code> records a URL and a SHA-256 for every downloaded file.
+  <code>cpp/build.py</code> downloads only what is missing or corrupt and aborts on any checksum
+  mismatch. No system packages are installed; CMake and Ninja come from the venv.
+</p>
+
+<h3>Build pipeline</h3>
+<pre><code>python -m pip install -r requirements/cpp.txt
+python cpp/build.py              # first run: fetch + verify headers, symlink ORT, build
+python cpp/build.py --offline    # cached dependencies only</code></pre>
+<ol>
+  <li>Refuses to run unless the platform is Linux and <code>onnxruntime.__version__ == "1.31.0"</code>.</li>
+  <li>Downloads pinned headers into <code>third_party/cpp/</code> and verifies SHA-256.</li>
+  <li>Symlinks <code>libonnxruntime.so</code>, <code>.so.1</code>, <code>.so.1.31.0</code> and the providers library from the installed Python package into <code>third_party/cpp/lib/</code>.</li>
+  <li>Runs the CMake preset <code>release</code>: Ninja generator, <code>CMAKE_BUILD_TYPE=Release</code>, C++17.</li>
+  <li>Compiles with <code>-Wall -Wextra -Wpedantic -fno-fast-math -ffp-contract=off</code>. Disabling fast-math and FP contraction is deliberate: it keeps float results reproducible and comparable with Python.</li>
+  <li>Writes <code>build/cpp/build_info.json</code> with the ORT version, library path and hash, <code>main.cpp</code> hash and the lock-file hash.</li>
+</ol>
+<p>
+  <code>CMakeLists.txt</code> links the ORT library with an <code>RPATH</code> to
+  <code>third_party/cpp/lib</code>, so the binary finds the shared library without
+  <code>LD_LIBRARY_PATH</code>.
+</p>
+
+<h3>Program flow</h3>
+<ol>
+  <li><b>Argument check.</b> Only <code>--config &lt;file&gt;</code> is accepted; anything else prints usage and exits 2.</li>
+  <li><b>Config resolution.</b> Every relative path is joined with <code>project_root</code>, which is itself relative to the config file. Moving the config does not silently change what it points at.</li>
+  <li><b>Output guard.</b> The output directory must be empty, and must not be inside the image directory. A second run cannot overwrite or pollute a previous report.</li>
+  <li><b>Range validation.</b> Threads ≥ 1, warmup ≥ 0, repeats ≥ 1, finite confidence and NMS IoU in [0, 1], buffer mode <code>fresh</code> or <code>reuse</code>, <code>max_detections</code> ≥ 1.</li>
+  <li><b>Model identity check.</b> Reads <code>&lt;model&gt;.json</code> and requires the class list to equal bus/bike/car/pedestrian/truck, <code>model_family == "yolo11"</code>, <code>precision == "float32"</code>, and <code>onnx_sha256</code> to equal the real hash of the model file. A swapped or edited model fails before any inference.</li>
+  <li><b>Image list.</b> From a <code>manifest</code> JSON, from COCO <code>annotations</code> (only the <code>images</code> records are used, ground truth is ignored), or by recursively scanning the image directory for png/jpg/jpeg/bmp and sorting names. Paths are rejected if absolute or containing <code>..</code>.</li>
+  <li><b>Session setup.</b> Asserts ONNX Runtime 1.31.0, sets intra-op threads from config, inter-op to 1, <code>ORT_ENABLE_ALL</code> graph optimization, then validates the graph signature is exactly static FP32 <code>[1,3,S,S] → [1,9,N]</code>. Anything else is refused rather than guessed at.</li>
+  <li><b>Warm-up.</b> Runs <code>warmup</code> predictions over the list cyclically, untimed, so allocator and ORT caches are warm before measurement.</li>
+  <li><b>Measured loop.</b> Per image: decode, check dimensions against the manifest when present, predict, record stage timings. Predictions are written once, from repeat 0, even when <code>repeats &gt; 1</code>.</li>
+  <li><b>Aggregation and output.</b> Mean/p50/p95/p99 per stage, FPS as 1000/mean, peak RSS from <code>getrusage</code>, then <code>per_image.json</code>, <code>predictions.json</code>, <code>summary.json</code> and the effective <code>config.json</code>.</li>
+</ol>
+
+<h3>Preprocessing: Pillow-compatible letterbox</h3>
+<p>
+  The goal is not "a resize", it is the same pixels Pillow produces, so the two backends can
+  be compared fairly.
+</p>
+<ul>
+  <li><b>Resize plan caching.</b> A <code>ResizePlan</code> is computed once per source
+  <code>(width, height)</code> pair and stored in a map. It holds the target size, padding
+  offsets, scale ratio and two separable filter kernels.</li>
+  <li><b>Dimensions.</b> <code>ratio = min(size/w, size/h)</code>, then target dimensions use
+  <code>nearbyint</code> (ties-to-even) to match Python's <code>round</code>.</li>
+  <li><b>Padding offsets.</b> Centered with the same <code>-0.1</code> bias Pillow applies, so
+  the odd-size case lands on the same pixel.</li>
+  <li><b>Bilinear kernel.</b> Weights are normalized per output pixel and stored as 22-bit
+  fixed-point integers (<code>1 &lt;&lt; 22</code>). Each accumulator starts at
+  <code>1 &lt;&lt; 21</code> for round-half-up, and the result is shifted by 22 and clamped to
+  0–255.</li>
+  <li><b>Two passes.</b> Horizontal resize into a scratch buffer, then vertical resize into the
+  final buffer, skipping a pass when the axis already matches. Integer math keeps it
+  deterministic and fast.</li>
+  <li><b>Tensor fill.</b> The CHW float buffer is filled with <code>114/255</code> padding, then
+  the resized HWC RGB bytes are scattered into their planes as <code>value / 255</code>.</li>
+</ul>
+
+<h3>Postprocessing: decode, restore, NMS</h3>
+<p>
+  The export is transposed: 9 channels by N anchors, laid out <code>[1,9,N]</code>.
+  Channels 0–3 are <code>cx, cy, w, h</code>; channels 4–8 are the five class scores.
+</p>
+<ol>
+  <li><b>Finiteness gate.</b> All nine values for an anchor must be finite; otherwise the anchor is skipped. NaN can never become a detection.</li>
+  <li><b>Class and score.</b> The label starts at class 0 with channel 4 as its score, then channels 5–8 compete; highest wins. Below <code>confidence</code>, the anchor is dropped.</li>
+  <li><b>Coordinate restoration.</b> <code>cxcywh</code> becomes <code>xyxy</code>, padding offsets are subtracted, the result is divided by the letterbox ratio and clamped to the original image bounds. Degenerate boxes are discarded.</li>
+  <li><b>Candidate ordering.</b> Sorted by score descending, ties broken by anchor index, then capped at 30,000 candidates.</li>
+  <li><b>Class-aware greedy NMS.</b> Each of the five classes is filtered separately against already-kept boxes of that class; a box is suppressed when IoU exceeds <code>nms_iou</code>.</li>
+  <li><b>Final order.</b> A stable sort by score descending, ties by class then anchor, matching Python. The list is truncated to <code>max_detections</code> (default 300).</li>
+</ol>
+
+<h3>The two buffer modes</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>Mode</th><th>Input tensor</th><th>Output tensor</th><th>What it measures</th></tr></thead>
+  <tbody>
+    <tr><td><b>reuse</b> (default)</td><td><code>std::vector&lt;float&gt;</code> allocated once, wrapped in one <code>Ort::Value</code></td><td>application-owned vector, passed to the <code>Session::Run</code> overload that accepts preallocated outputs</td><td>the cost of not reallocating per image</td></tr>
+    <tr><td><b>fresh</b></td><td>reallocated every prediction</td><td>ORT allocates a new output value each run</td><td>baseline for the reuse benefit</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+  Both modes report <code>input_tensor_allocations</code> and <code>output_tensor_allocations</code>
+  in <code>summary.json</code>, counted including warm-up. In the measured 100-image run, reuse
+  created one of each while fresh created 120 per trial. Those counters cover application
+  tensor creation only — not decoder buffers and not ONNX Runtime internals.
+</p>
+<p>
+  Reuse requires static graph shapes, which this export guarantees. Resize plans and the
+  candidate/NMS vectors also keep their capacity across images.
+</p>
+
+<h3>What the timings mean</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>Stage</th><th>Starts</th><th>Includes</th></tr></thead>
+  <tbody>
+    <tr><td>preprocess</td><td>predict() entry</td><td>letterbox resize, padding, CHW normalization</td></tr>
+    <tr><td>inference</td><td>after preprocess</td><td><code>Session::Run</code> only</td></tr>
+    <tr><td>postprocess</td><td>after inference</td><td>decode, coordinate restoration, NMS, truncation</td></tr>
+    <tr><td>pipeline</td><td>predict() entry</td><td>preprocess + inference + postprocess</td></tr>
+    <tr><td>image_decode</td><td>before file read</td><td>stb_image decode to RGB</td></tr>
+    <tr><td>request</td><td>before file read</td><td>decode + pipeline</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+  Excluded from all of them: process startup, warm-up, tensor dumps, metric computation and
+  final JSON writing. RSS is the process high-water mark, so it includes runtime libraries and
+  retained results. Filesystem caches are not flushed, so a second run can look faster.
+  Dataset-pass FPS exists in the summary but includes report formatting, so it is not
+  deployment throughput.
+</p>
+
+<h3>Correctness gates in the comparison</h3>
+<p>
+  <code>yolo/compare_cpp.py</code> runs Python, <code>cpp_fresh</code> and <code>cpp_reuse</code>
+  as separate processes, in rotating order across trials, on the same seeded image subset and
+  the same model. It fails the run rather than reporting a speedup when:
+</p>
+<ul>
+  <li>input tensors are not exactly equal;</li>
+  <li>raw outputs differ beyond <code>atol=1e-4, rtol=1e-5</code>;</li>
+  <li>detection counts or classes differ, or matching is not a complete one-to-one assignment;</li>
+  <li>box error exceeds 0.01 px or score error exceeds 1e-5;</li>
+  <li>any non-finite value appears.</li>
+</ul>
+<p>
+  Matching is order-independent and handles equal-score overlapping candidates, so a valid
+  correspondence cannot fail merely because the sort order changed.
+</p>
+
+<h3>Deliberate limits</h3>
+<ul>
+  <li><b>Static shapes only.</b> The graph must be a fixed <code>[1,3,S,S] → [1,9,N]</code>. Dynamic axes, batching and variable input sizes are rejected, not supported partially.</li>
+  <li><b>CPU, FP32, batch 1.</b> No CUDA, no TensorRT, no INT8, no batching.</li>
+  <li><b>JPEG may differ from Pillow.</b> <code>stb_image</code> is a different decoder. PNG is verified to match; a JPEG speed comparison only counts after the parity gate passes.</li>
+  <li><b>JSON only.</b> No annotated images and no AP: the CLI writes predictions for an external evaluator.</li>
+  <li><b>Not in the Docker image.</b> The provided <code>Dockerfile</code> packages the Python runner. Relocating the binary requires its ORT shared library and the license notices in <code>cpp/THIRD_PARTY.md</code>.</li>
+  <li><b>Config keys are strict where it matters.</b> An unknown model family, wrong class order, wrong precision or a checksum mismatch is a hard error.</li>
+</ul>
+
+<h3>Tests</h3>
+<p>
+  <code>python -m pytest tests/test_cpp_runtime.py -q</code> runs the compiled executable and
+  covers PNG input-tensor parity for odd, non-square, upsampled, downsampled and one-pixel
+  images, same-class NMS and cross-class overlap, invalid anchors, coordinate restoration,
+  model checksum validation, and allocation counts in both buffer modes. Without a built
+  binary these tests are skipped, not failed.
+</p>
+
+</div>
+</details>
+
+<h2 id="run">How to run</h2>
+<h3>Install</h3>
+<pre><code>python -m pip install -r requirements/training.txt   # training + project imports
+python -m pip install -r requirements/inference.txt  # CPU inference only
+python -m pip install -r requirements/benchmark.txt  # benchmarking
+python -m pip install -r requirements/cpp.txt        # native build deps</code></pre>
+
+<h3>Prepare and train (Kaggle GPU)</h3>
+<pre><code>python yolo/prepare_yolo.py --format yolo \
+  --images /kaggle/input/fisheye/images/train \
+  --labels /kaggle/input/fisheye/labels/train \
+  --val-images /kaggle/input/fisheye/images/val \
+  --val-labels /kaggle/input/fisheye/labels/val \
+  --output /kaggle/working/yolo_workflow/prepared
+
+python yolo/train_yolo.py --help
+python yolo/prune_yolo.py --help
+python yolo/export_yolo.py --help
+python yolo/package_local.py --help</code></pre>
+
+<h3>Infer and evaluate (local CPU)</h3>
+<pre><code>python yolo/infer_yolo.py --model models/baseline_640.onnx --source path/to/image.jpg
+python yolo/benchmark_yolo.py --help
+python yolo/evaluate_yolo.py --help</code></pre>
+
+<h3>Native C++ runtime</h3>
+<pre><code>python cpp/build.py --preset release
+# then run the preset in configs/cpp_cpu.json against your dataset
+python yolo/compare_cpp.py --help</code></pre>
+
+<h3>Tests</h3>
+<pre><code>python -m pytest tests -q</code></pre>
+
+<h2 id="limits">Honest limits</h2>
+<div class="note">
+  <b>Small objects are the weak spot.</b> AP small is 6.72% and pedestrian AP50:95 is
+  4.83%. The 640 px fisheye view shrinks distant people to a few pixels. Higher export
+  resolutions (960) exist for this reason.
+</div>
+<div class="note" style="margin-top:12px">
+  <b>No accuracy recovery after pruning.</b> Pruned checkpoints are validated directly.
+  If the 20% target costs too much AP, nothing here wins it back — recovery training or
+  distillation would have to be added.
+</div>
+<div class="note" style="margin-top:12px">
+  <b>The C++ speedup is modest and partly unattributed.</b> Per-trial means varied by up
+  to 14 ms, and C++ also changes preprocessing, NMS and the JPEG decoder. The 1.26× is a
+  measured ratio on one machine, not a proven allocation-only win.
+</div>
+<div class="note" style="margin-top:12px">
+  <b>Results come from one hardware profile.</b> All latency numbers are Intel
+  i7-1360P, 4 threads. They say nothing about Qualcomm or ARM targets.
+</div>
+
+<footer>
+  Generated from README.md, note.md, docs/AUDIT.md, docs/CPP_RESULTS.md and
+  reports/fisheye8k_docker/report.md. Numbers are as recorded in those files.
+</footer>
+
+</div>
+</body>
+</html>

@@ -4,6 +4,20 @@ Run from the current `efficient_detection/` directory. Code, requirements, noteb
 and documentation can be accessed directly using their relative paths.
 See [note.md](note.md) for the complete workflow.
 
+For native C++ inference with preallocated ONNX input/output buffers and a measured
+comparison against Python, follow [docs/CPP.md](docs/CPP.md). Runnable presets live
+in `configs/cpp_cpu.json` and `configs/compare_cpp_python.json`.
+See [docs/CPP_RESULTS.md](docs/CPP_RESULTS.md) for the measured 100-image comparison
+and its correctness checks and measurement limits.
+See [docs/AUDIT.md](docs/AUDIT.md) for the code/documentation audit and verified limits,
+and [docs/DFINE.md](docs/DFINE.md) for the separate optional D-FINE training workflow.
+
+For a CPU Docker image with the ONNX model and full FishEye8K evaluation, follow
+[docs/DOCKER.md](docs/DOCKER.md). It produces COCO accuracy, per-image and per-class
+statistics, precision/recall, F1 and explicitly defined detection accuracy,
+latency percentiles and memory reports directly from the test JSON;
+no prepared training dataset is required.
+
 In a Kaggle cell, clone into the directory name you will use and change to it:
 
 ```python
@@ -34,6 +48,8 @@ efficient_detection/               # Current working directory / Git checkout
 ├── yolo/                          # Prepare, annotate, train, prune, export, infer, benchmark, package
 ├── dfine/                         # Annotation backend setup and original D-FINE workflow
 ├── shared/                        # Dataset readers and common utilities
+├── cpp/                           # Native CPU runtime, CMake preset and build helper
+├── configs/                       # C++ inference and Python/C++ comparison presets
 ├── notebooks/                     # yolo_train.ipynb and dfine_train.ipynb
 ├── requirements/                  # training.txt, inference.txt, benchmark.txt
 ├── docs/                          # Local deployment guides
@@ -51,7 +67,10 @@ Main capabilities:
 - Physically prune internal channels at 10%/20% targets and validate without recovery training.
 - Export static FP32 ONNX at 512/640/960 with PyTorch parity checks.
 - Run CPU inference with RGB letterboxing, coordinate restoration, NMS, and image/JSON outputs.
-- Benchmark AP, small-object AP, stage p50/p95 latency, memory, model size and parameters.
+- Run native C++ inference with reusable tensors; compare Python/C++ fresh/reuse modes with input/output/detection parity checks.
+- Benchmark AP, small-object AP, inference/pipeline FPS, stage p50/p95 latency, memory, model size and parameters.
+- Report request FPS including image decoding and dataset-pass FPS including evaluation-loop overhead for full-dataset runs.
+- Package the CPU runtime/model in Docker and evaluate every original COCO test image.
 - Select the lowest pipeline p95 within 2 AP points of the baseline and package models for local use.
 
 D-FINE source is needed only for annotation or original D-FINE training. The

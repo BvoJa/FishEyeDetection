@@ -17,7 +17,14 @@ python -m efficient_detection.yolo.infer_yolo --model models/baseline_640.onnx -
 
 `--input` accepts one image or a recursive directory. Add `--no-images` for JSON output only, `--confidence 0.25` to change the confidence threshold, or `--threads 4` to set CPU threads. Results include annotated images, COCO predictions, an image-ID manifest, and preprocessing/inference/NMS timing statistics.
 
-For accuracy evaluation, pass normalized COCO annotations using `--annotations validation/annotations/val.json` and `--input validation/images`. Only the listed images are processed and their IDs are preserved. Without annotations, numeric IDs follow sorted input filenames.
+The console and `predictions/summary.json` report `inference_fps` (model only),
+`pipeline_fps` (preprocessing + model + NMS), `request_fps` (also image reading/decoding)
+and `dataset_fps` (the full image loop, including prediction formatting, logging and
+optional annotated-image writing). Startup, three warm-up predictions and final
+JSON writing are excluded. FPS uses image count divided by total seconds; it does
+not average per-image reciprocals. Batch size is 1.
+
+For inference with original COCO image IDs, pass `--annotations validation/annotations/val.json` and `--input validation/images`. Only the listed images are processed and their IDs are preserved. This option selects inputs and IDs; `infer_yolo.py` does not calculate AP/F1. Without annotations, numeric IDs follow sorted input filenames. Use the benchmark below for COCO AP, or `yolo/evaluate_yolo.py` from the source checkout for AP, fixed-threshold metrics and a Markdown report.
 
 Install the additional CPU benchmark dependencies and compare the exported models:
 
@@ -30,7 +37,10 @@ The wildcard is expanded by the script, including on Windows. Defaults are 20 wa
 
 Read `reports/results.csv` and `accuracy_latency.png` to compare model size, parameters, AP, small-object AP, peak process RSS, and stage p50/p95 latency. Memory measurements include session startup and cached RGB inputs. Accuracy uses a fixed configuration once per model; timing excludes image decoding and file writing. Confidence is 0.001 for AP evaluation and 0.25 for deployment latency measurement.
 
-`reports/selection.json` identifies the fastest end-to-end p95 candidate within 2 absolute AP points of the baseline. AP is stored on a 0–1 scale, so the default budget is 0.02. The unpruned baseline is retained when it is the best eligible candidate. Use the selected model, `--threads`, and `--graph-optimization` setting with `infer_yolo.py`.
+Benchmark CSV/JSON rows also include `inference_fps` and `pipeline_fps`. Inputs are
+already decoded and cached, so this benchmark does not measure request/dataset FPS.
+
+`reports/selection.json` identifies the fastest pipeline p95 candidate within 2 absolute AP points of the baseline. This timing excludes image decoding and writing. AP is stored on a 0–1 scale, so the default budget is 0.02. The unpruned baseline is retained when it is the best eligible candidate. Use the selected model, `--threads`, and `--graph-optimization` setting with `infer_yolo.py`.
 
 For a separate held-out test set, provide its full prepared dataset, use `--split test --selected reports/selection.json`, and include the baseline and selected model in `--models`. Test results evaluate the prior choice rather than selecting another model.
 

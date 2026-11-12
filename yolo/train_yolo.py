@@ -31,8 +31,12 @@ def main():
         for record in records:
             if not (root / "images" / record["file_name"]).is_file():
                 raise FileNotFoundError(root / "images" / record["file_name"])
-        if split in {"train", "val"} and not any(row["boxes"] for row in records):
-            raise ValueError(f"{split} needs at least one labeled object")
+        if split in {"train", "val"} and not any(
+            not box.get("iscrowd", 0) and not box.get("ignore", 0)
+            for row in records
+            for box in row["boxes"]
+        ):
+            raise ValueError(f"{split} needs at least one nonignored labeled object")
     if (args.output / "weights/last.pt").exists() and not args.resume:
         parser.error(
             "Output already contains training weights; use --resume or a new output"

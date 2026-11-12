@@ -11,7 +11,28 @@ from efficient_detection.shared.common import (
     EXTENSIONS,
     camera_scene,
     read_json,
+    sha256,
 )
+
+
+def check_split_content(splits):
+    """Reject byte-identical images across splits; retain/count same-split copies."""
+    seen = {}
+    duplicates = dict.fromkeys(splits, 0)
+    for split, records in splits.items():
+        for record in records:
+            fingerprint = record["sha256"] = sha256(record["path"])
+            previous = seen.get(fingerprint)
+            if previous is None:
+                seen[fingerprint] = (split, record["path"])
+            elif previous[0] == split:
+                duplicates[split] += 1
+            else:
+                raise ValueError(
+                    "Duplicate image content across dataset splits: "
+                    f"{previous[1]} ({previous[0]}) and {record['path']} ({split})"
+                )
+    return duplicates
 
 
 def clipped_box(box, width, height):
@@ -119,11 +140,19 @@ def load_coco(annotation, image_dir, prefix="source0", category_map=None):
         )
     grouped = {}
     ids, filenames = set(), set()
+    image_ids = {image["id"] for image in data["images"]}
     for ann in data["annotations"]:
+        if ann["image_id"] not in image_ids:
+            raise ValueError("COCO annotations reference unknown image IDs")
         if ann["category_id"] not in mapping:
             raise ValueError(f"Undefined category: {ann['category_id']}")
         target = mapping[ann["category_id"]]
         if target is not None:
+            if ann.get("ignore", 0) and not ann.get("iscrowd", 0):
+                raise ValueError(
+                    "COCO ignore=1 regions are not supported by the training converters; "
+                    "review these annotations explicitly instead of converting them to positive training labels"
+                )
             grouped.setdefault(ann["image_id"], []).append(
                 {
                     "category_id": target,
@@ -161,8 +190,6 @@ def load_coco(annotation, image_dir, prefix="source0", category_map=None):
                 "boxes": boxes,
             }
         )
-    if set(grouped) - ids:
-        raise ValueError("COCO annotations reference unknown image IDs")
     return records
 
 

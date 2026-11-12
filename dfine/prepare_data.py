@@ -5,7 +5,12 @@ import shutil
 from pathlib import Path
 
 from efficient_detection.shared.common import CLASSES, read_json, write_json
-from efficient_detection.shared.datasets import load_coco, load_yolo, split_records
+from efficient_detection.shared.datasets import (
+    check_split_content,
+    load_coco,
+    load_yolo,
+    split_records,
+)
 
 
 def write_split(records, output, split, mode):
@@ -62,6 +67,9 @@ def main():
     parser.add_argument("--allow-missing-labels", action="store_true")
     parser.add_argument("--mode", choices=["copy", "symlink"], default="copy")
     args = parser.parse_args()
+    suffix = "labels" if args.format == "yolo" else "annotations"
+    if (args.val_images is None) != (getattr(args, f"val_{suffix}") is None):
+        parser.error(f"Provide --val-images and --val-{suffix} together")
     if not 0 <= args.pseudo_confidence <= 1:
         parser.error("--pseudo-confidence must be between 0 and 1")
     if args.output.exists() and any(args.output.iterdir()):
@@ -75,8 +83,6 @@ def main():
             args.images, args.labels, args.pseudo_confidence, args.allow_missing_labels
         )
         if args.val_images:
-            if not args.val_labels:
-                parser.error("--val-images requires --val-labels")
             val = load_yolo(
                 [args.val_images],
                 [args.val_labels],
@@ -91,8 +97,6 @@ def main():
         mapping = read_json(args.category_map) if args.category_map else None
         records = load_coco(args.annotations, args.images[0], category_map=mapping)
         if args.val_images:
-            if not args.val_annotations:
-                parser.error("--val-images requires --val-annotations")
             val = load_coco(
                 args.val_annotations, args.val_images, "validation", mapping
             )
@@ -106,6 +110,7 @@ def main():
         train, val = split_records(
             records, args.split, args.val_fraction, args.seed, args.val_cameras
         )
+    check_split_content({"train": train, "val": val})
     args.output.mkdir(parents=True, exist_ok=True)
     write_split(train, args.output, "train", args.mode)
     write_split(val, args.output, "val", args.mode)

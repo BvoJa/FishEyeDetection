@@ -9,6 +9,7 @@ from efficient_detection.dfine.config import (
     bootstrap,
     save_config,
 )
+from efficient_detection.shared.common import CLASSES
 
 
 def annotation_config(variant="dfine-s", classes=80, image_size=640, repo=DEFAULT_REPO):
@@ -58,6 +59,8 @@ def load_annotator(checkpoint, variant, classes, image_size, device, repo=DEFAUL
         cfg = YAMLConfig(str(path))
         model = cfg.model
         state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+        if classes == 5 and state.get("classes", CLASSES) != CLASSES:
+            raise ValueError(f"Checkpoint class order must be {CLASSES}")
         # D-FINE's bootstrap also exposes dfine/train.py, so avoid importing a
         # helper through the ambiguous top-level name "train" in notebooks.
         ema = state.get("ema")

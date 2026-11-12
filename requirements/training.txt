@@ -6,6 +6,7 @@ Pillow>=10
 PyYAML>=6
 scipy>=1.11
 faster-coco-eval>=1.6.5,<2
+pycocotools>=2.0.7,<3
 tensorboard>=2.16
 calflops>=0.3
 transformers>=4.40,<5

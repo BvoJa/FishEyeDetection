@@ -14,7 +14,12 @@ from efficient_detection.shared.common import (
     sha256,
     write_json,
 )
-from efficient_detection.shared.datasets import load_coco, load_yolo, split_records
+from efficient_detection.shared.datasets import (
+    check_split_content,
+    load_coco,
+    load_yolo,
+    split_records,
+)
 
 
 def materialize(record, root, split, mode):
@@ -161,6 +166,14 @@ def prepare(args):
     root = args.output.resolve()
     if root.exists() and any(root.iterdir()):
         raise ValueError("Choose an empty --output directory")
+    for split in ["val", "test"]:
+        suffix = "labels" if args.format == "yolo" else "annotations"
+        image_dir = getattr(args, f"{split}_images")
+        annotations = getattr(args, f"{split}_{suffix}")
+        if (image_dir is None) != (annotations is None):
+            raise ValueError(
+                f"Provide --{split}-images and --{split}-{suffix} together"
+            )
     if args.format == "yolo":
         if not args.labels:
             raise ValueError("YOLO input requires --labels")
@@ -192,10 +205,6 @@ def prepare(args):
             if args.test_images and args.test_annotations
             else None
         )
-    if args.val_images and val is None or args.test_images and test is None:
-        raise ValueError(
-            "Provide labels/annotations for each explicit validation/test image directory"
-        )
     train, val = (
         (records, val)
         if val is not None
@@ -206,26 +215,12 @@ def prepare(args):
     splits = {"train": train, "val": val}
     if test is not None:
         splits["test"] = test
-    seen = {}
-    within_split_duplicates = dict.fromkeys(splits, 0)
+    within_split_duplicates = check_split_content(splits)
     for split, rows in splits.items():
         if not rows:
             raise ValueError(f"Empty split: {split}")
         names = set()
         for record in rows:
-            record["sha256"] = sha256(record["path"])
-            previous = seen.get(record["sha256"])
-            if previous is not None:
-                previous_split, previous_path = previous
-                if previous_split != split:
-                    raise ValueError(
-                        "Duplicate image content across dataset splits: "
-                        f"{previous_path} ({previous_split}) and {record['path']} ({split})"
-                    )
-                # Preserve supplied entries and their individual human labels.
-                within_split_duplicates[split] += 1
-            else:
-                seen[record["sha256"]] = (split, record["path"])
             key = Path(record["name"]).with_suffix("").as_posix()
             if key in names:
                 raise ValueError(f"YOLO label filename collision: {key}")

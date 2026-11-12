@@ -25,10 +25,8 @@ from efficient_detection.shared.common import (
 
 
 def checkpoint_weights(checkpoint):
-    if "ema" in checkpoint:
-        state = checkpoint["ema"]["module"]
-    else:
-        state = checkpoint.get("model", checkpoint)
+    ema = checkpoint.get("ema")
+    state = ema["module"] if ema else checkpoint.get("model", checkpoint)
     return {key.removeprefix("module."): value for key, value in state.items()}
 
 

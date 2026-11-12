@@ -150,7 +150,7 @@ def main():
         "batch_size": 1,
         "precision": "float32",
         "opset": 17,
-        "weights": "ema" if "ema" in checkpoint else "model",
+        "weights": "ema" if checkpoint.get("ema") else "model",
         "verified_samples": len(samples),
         "best_validation_ap": checkpoint.get("best_ap"),
     }

@@ -72,6 +72,78 @@ def gold_dataset(tmp_path, format="yolo"):
     return args.output
 
 
+@pytest.mark.parametrize(
+    "format,field",
+    [
+        ("yolo", "val_labels"),
+        ("yolo", "test_labels"),
+        ("coco", "val_annotations"),
+        ("coco", "test_annotations"),
+    ],
+)
+def test_preparation_rejects_split_labels_without_images(tmp_path, format, field):
+    args = gold_dataset_args(tmp_path, format)
+    setattr(args, field, args.labels[0] if format == "yolo" else args.annotations)
+    with pytest.raises(ValueError, match="together"):
+        prepare(args)
+    assert not args.output.exists()
+
+
+def test_coco_converter_rejects_unsupported_ignore_regions(tmp_path):
+    args = gold_dataset_args(tmp_path, "coco")
+    annotation = read_json(args.annotations)
+    annotation["annotations"][0]["ignore"] = 1
+    write_json(args.annotations, annotation)
+    with pytest.raises(ValueError, match="ignore=1"):
+        prepare(args)
+    assert not args.output.exists()
+
+
+def test_coco_checks_image_references_even_for_unmapped_categories(tmp_path):
+    args = gold_dataset_args(tmp_path, "coco")
+    annotation = read_json(args.annotations)
+    annotation["categories"].append({"id": 99, "name": "cat"})
+    annotation["annotations"].append(
+        {"image_id": 9999, "category_id": 99, "bbox": [0, 0, 10, 10]}
+    )
+    write_json(args.annotations, annotation)
+    with pytest.raises(ValueError, match="unknown image IDs"):
+        prepare(args)
+    assert not args.output.exists()
+
+
+def test_training_rejects_all_crowd_splits_before_loading_model(tmp_path):
+    import subprocess
+    import sys
+
+    args = gold_dataset_args(tmp_path, "coco")
+    annotation = read_json(args.annotations)
+    for row in annotation["annotations"]:
+        row["iscrowd"] = 1
+    write_json(args.annotations, annotation)
+    prepare(args)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).resolve().parents[1] / "yolo/train_yolo.py"),
+            "--data",
+            str(args.output / "data.yaml"),
+            "--model",
+            "missing.pt",
+            "--output",
+            str(tmp_path / "training"),
+            "--device",
+            "cpu",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "nonignored labeled object" in result.stderr
+    assert not (tmp_path / "training").exists()
+
+
 @pytest.mark.parametrize("format", ["yolo", "coco"])
 def test_yolo_preparation_and_portable_dataset(tmp_path, format):
     root = gold_dataset(tmp_path, format)
@@ -226,6 +298,8 @@ def test_dfine_s_strict_checkpoint_reload_after_bootstrap(tmp_path):
     from efficient_detection.dfine.annotator import load_annotator
     from efficient_detection.dfine.config import DEFAULT_REPO, bootstrap, save_config
 
+    if not (DEFAULT_REPO / "third_party/D-FINE/src/core/yaml_config.py").is_file():
+        pytest.skip("Optional D-FINE backend: run python dfine/setup_backend.py first")
     torch.set_num_threads(4)
     YAMLConfig = bootstrap(DEFAULT_REPO)
     config = tmp_path / "annotation.yml"
@@ -243,6 +317,9 @@ def test_dfine_s_strict_checkpoint_reload_after_bootstrap(tmp_path):
         assert torch.equal(value, restored.state_dict()[key])
     with pytest.raises(ValueError, match="Checkpoint must match"):
         load_annotator(checkpoint, "dfine-s", 80, 256, "cpu")
+    torch.save({"model": original.state_dict(), "classes": CLASSES[::-1]}, checkpoint)
+    with pytest.raises(ValueError, match="class order"):
+        load_annotator(checkpoint, "dfine-s", 5, 256, "cpu")
 
 
 def test_letterbox_rgb_and_original_coordinate_restoration():
@@ -352,6 +429,7 @@ def test_yolo_onnx_export_and_cpu_inference(tmp_path, yolo_checkpoint):
             "-c",
             (
                 "import sys; from efficient_detection.yolo.infer_yolo import run; "
+                "from efficient_detection.yolo.benchmark_yolo import accuracy; "
                 "assert 'torch' not in sys.modules; "
                 "run('models/model.onnx', sys.argv[1], 'predictions', save_images=False); "
                 "assert 'torch' not in sys.modules"
@@ -427,6 +505,10 @@ def test_cpu_coco_accuracy_on_perfect_predictions(tmp_path):
     metrics = measure(path, [image], threads=1, warmup=0, repeats=2, trials=1)
     assert metrics["timed_iterations"] == 2
     assert metrics["peak_process_rss_mb"] > 0
+    for stage in ["inference", "pipeline"]:
+        assert metrics[f"{stage}_fps"] == pytest.approx(
+            1000 / metrics[f"{stage}_mean_ms"]
+        )
 
 
 def test_pruned_checkpoints_cannot_enter_training(tmp_path, yolo_checkpoint):

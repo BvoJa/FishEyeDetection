@@ -9,6 +9,7 @@ from efficient_detection.dfine.config import DEFAULT_REPO, build_config
 from efficient_detection.dfine.copy_paste import augment
 from efficient_detection.dfine.infer import postprocess, preprocess
 from efficient_detection.dfine.prepare_data import write_split
+from efficient_detection.dfine.train import checkpoint_weights
 from efficient_detection.shared.common import (
     CLASSES,
     box_iou,
@@ -19,6 +20,16 @@ from efficient_detection.shared.common import (
 )
 from efficient_detection.shared.datasets import load_coco, load_yolo, split_records
 from PIL import Image
+
+
+def test_dfine_checkpoint_without_ema_uses_model_weights():
+    assert checkpoint_weights({"ema": None, "model": {"module.weight": 3}}) == {
+        "weight": 3
+    }
+    assert checkpoint_weights({"model": {"module.weight": 3}}) == {"weight": 3}
+    assert checkpoint_weights(
+        {"ema": {"module": {"weight": 5}}, "model": {"weight": 3}}
+    ) == {"weight": 5}
 
 
 def make_yolo(tmp_path):
@@ -48,6 +59,38 @@ def test_yolo_camera_split_and_coco_roundtrip(tmp_path):
     assert data["annotations"][0]["bbox"] == pytest.approx([6, 4, 12, 8])
     assert {cat["name"] for cat in data["categories"]} == set(CLASSES)
     assert all("camera1" in image["file_name"] for image in data["images"])
+
+
+@pytest.mark.parametrize("problem", ["orphan_labels", "cross_split_copy"])
+def test_legacy_preparation_rejects_incomplete_or_leaking_splits(tmp_path, problem):
+    images, labels = make_yolo(tmp_path)
+    output = tmp_path / "prepared"
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve().parents[1] / "dfine/prepare_data.py"),
+        "--format",
+        "yolo",
+        "--images",
+        str(images),
+        "--labels",
+        str(labels),
+        "--output",
+        str(output),
+    ]
+    if problem == "orphan_labels":
+        command += ["--val-labels", str(labels)]
+        expected = "together"
+    else:
+        validation = tmp_path / "validation"
+        validation.mkdir()
+        (validation / "copy.png").write_bytes((images / "camera1_A_1.png").read_bytes())
+        (validation / "copy.txt").write_text("0 0.5 0.5 0.5 0.5\n")
+        command += ["--val-images", str(validation), "--val-labels", str(validation)]
+        expected = "Duplicate image content across dataset splits"
+    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert expected in result.stderr
+    assert not output.exists()
 
 
 def test_yolo_pseudo_confidence_and_negative_images(tmp_path):
@@ -145,6 +188,41 @@ def test_postprocess_clips_boxes_and_makes_heuristics_optional():
     assert result[0].tolist() == [0]
     assert result[1].tolist() == [[0, 0, 20, 20]]
     assert result[2][0] == pytest.approx(0.52)
+
+
+def test_dfine_backend_builds_train_and_validation_batches(tmp_path):
+    torch = pytest.importorskip("torch")
+    from efficient_detection.dfine.config import bootstrap, save_config
+
+    if not (DEFAULT_REPO / "third_party/D-FINE/src/core/yaml_config.py").is_file():
+        pytest.skip("Optional D-FINE backend: run python dfine/setup_backend.py first")
+    images, labels = make_yolo(tmp_path)
+    train, val = split_records(load_yolo([images], [labels]), val_cameras=[2])
+    prepared = tmp_path / "prepared"
+    write_split(train, prepared, "train", "copy")
+    write_split(val, prepared, "val", "copy")
+    config = build_config(
+        DEFAULT_REPO,
+        prepared,
+        tmp_path / "run",
+        image_size=256,
+        batch_size=2,
+        epochs=1,
+        final_epochs=0,
+        workers=0,
+        multiscale=False,
+    )
+    path = tmp_path / "config.yml"
+    save_config(path, config)
+    cfg = bootstrap(DEFAULT_REPO)(str(path))
+    loader = cfg.train_dataloader
+    loader.set_epoch(0)
+    pixels, targets = next(iter(loader))
+    assert pixels.shape == (2, 3, 256, 256) and pixels.dtype == torch.float32
+    assert len(targets) == 2
+    pixels, targets = next(iter(cfg.val_dataloader))
+    assert pixels.shape == (1, 3, 256, 256)
+    assert targets[0]["orig_size"].tolist() == [120, 80]
 
 
 def test_config_has_one_flat_training_definition_and_explicit_stop(tmp_path):

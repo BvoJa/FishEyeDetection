@@ -231,7 +231,8 @@
     <p class="io"><b>In</b> prepared <code>data.yaml</code>, <code>yolo11n.pt</code> COCO weights</p>
     <p class="io"><b>Out</b> <code>runs/baseline/weights/best.pt</code>, <code>results.csv</code>, per-epoch validation</p>
     <ul>
-      <li>Defaults: 640 px, 30 epochs, seed 0, deterministic, 2 workers. AMP is off unless you pass <code>--amp</code>.</li>
+      <li>Defaults: 640 px, 30 epochs, batch 32, seed 0, deterministic, 2 workers. AMP is off unless you pass <code>--amp</code>.</li>
+      <li>On the Kaggle GPU T4 x2 machine the notebook trains with <code>--device 0,1</code>. Ultralytics DDP splits the requested batch across both GPUs, so batch 32 becomes 16 per GPU, and the notebook refuses to start if it only sees one GPU.</li>
       <li><code>data.yaml</code> is checked first: class names and order must match the project convention.</li>
       <li>A pruned checkpoint is refused here. Pruning is one-way in this project, so a pruned model cannot re-enter training.</li>
       <li><code>--resume</code> restores optimizer, scheduler, scaler, EMA and RNG state, not just weights.</li>

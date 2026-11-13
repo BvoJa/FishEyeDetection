@@ -17,3 +17,4 @@ onnx>=1.16,<2
 onnxruntime>=1.18,<2
 ultralytics==8.4.182
 torch-pruning==1.6.0
+cloudpickle>=3.1.1

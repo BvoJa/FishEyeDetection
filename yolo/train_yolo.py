@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--image-size", type=int, default=640)
-    parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="0")
     parser.add_argument("--workers", type=int, default=2)
@@ -75,6 +75,8 @@ def main():
             "seed": args.seed,
             "epochs": args.epochs,
             "image_size": args.image_size,
+            "batch_size": args.batch_size,
+            "device": args.device,
             "best_checkpoint": str(output / "weights/best.pt"),
             "pruned": False,
         },

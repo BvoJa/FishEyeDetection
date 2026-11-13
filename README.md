@@ -83,7 +83,7 @@ python dfine/setup_backend.py
 An existing D-FINE checkout can be supplied with `--repo-root` to annotation or
 legacy commands. Model configurations are included in this project.
 
-Defaults: YOLO11n, 640 pixels, 30 epochs, seed 0; FP32 ONNX at 512/640/960. Classes
+Defaults: YOLO11n, 640 pixels, 30 epochs, batch 32, seed 0; FP32 ONNX at 512/640/960. Classes
 are bus, bike, car, pedestrian, truck (0–4). There is no recovery training,
 INT8 quantization, or knowledge-distillation stage in the YOLO workflow.
 

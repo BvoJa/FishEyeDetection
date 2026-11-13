@@ -105,7 +105,7 @@ python yolo/prepare_yolo.py --format yolo \
 python yolo/train_yolo.py \
   --data /kaggle/working/yolo_workflow/prepared/data.yaml \
   --model yolo11n.pt --image-size 640 --epochs 30 \
-  --batch-size 2 --seed 0 --device 0 \
+  --batch-size 32 --seed 0 --device 0,1 \
   --output /kaggle/working/yolo_workflow/runs/baseline
 ```
 
@@ -149,7 +149,7 @@ confirmed from the checkpoint's training setup, since weights alone do not ident
 python yolo/train_yolo.py \
   --data /kaggle/working/yolo_workflow/prepared/data.yaml \
   --model yolo11n.pt --image-size 640 --epochs 30 \
-  --batch-size 2 --seed 0 --device 0 \
+  --batch-size 32 --seed 0 --device 0,1 \
   --output /kaggle/working/yolo_workflow/runs/baseline
 ```
 

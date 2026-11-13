@@ -86,6 +86,18 @@
   }
   .flow .step b { color: var(--accent-2); font-weight: 600; }
   .flow .arrow { color: #4b5468; }
+  .stage .num {
+    color: var(--accent-2); font-size: .74rem; font-weight: 650;
+    letter-spacing: .1em; text-transform: uppercase;
+  }
+  .stage .path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .8rem; color: #6b7488; margin: 2px 0 10px;
+  }
+  .stage .io { margin: 0 0 8px; color: var(--muted); font-size: .88rem; }
+  .stage .io b { color: var(--text); font-weight: 600; }
+  .stage ul { margin: 0; padding-left: 18px; }
+  .stage li { color: var(--muted); font-size: .88rem; margin-bottom: 5px; }
   .tree { color: var(--muted); line-height: 1.75; font-size: .88rem; white-space: pre; overflow-x: auto; }
   .tree b { color: var(--text); font-weight: 600; }
   .note {
@@ -180,6 +192,109 @@
   D-FINE is optional: only needed to generate hard pseudo labels or to reproduce the
   original D-FINE workflow.
 </p>
+
+<div class="grid g2" style="margin-top:22px">
+
+  <div class="card stage">
+    <div class="num">Stage 1</div>
+    <h3>Prepare labels</h3>
+    <div class="path">yolo/prepare_yolo.py</div>
+    <p class="io"><b>In</b> COCO JSON, or a YOLO image folder plus one <code>.txt</code> per image</p>
+    <p class="io"><b>Out</b> <code>images/{train,val}</code>, <code>labels/</code>, <code>annotations/{train,val}.json</code>, <code>manifest.json</code>, <code>data.yaml</code></p>
+    <ul>
+      <li>Every source category is remapped onto the fixed order bus, bike, car, pedestrian, truck. A custom COCO mapping goes through <code>--category-map</code>.</li>
+      <li>Split by camera, parsed from <code>camera&lt;id&gt;_&lt;M|A|E|N&gt;_</code> in the filename, so no scene appears in both splits. <code>--split random</code> is the fallback when names carry no camera ID.</li>
+      <li>Byte-identical images across splits are rejected by SHA-256. Duplicates inside one split are kept and counted.</li>
+      <li>A validation or test argument without its matching pair is rejected instead of silently ignored. Crowd boxes stay for evaluation; non-crowd <code>ignore=1</code> regions are rejected because the trainer would learn them as positives.</li>
+      <li><code>--mode symlink</code> by default, <code>copy</code> for a portable dataset.</li>
+    </ul>
+  </div>
+
+  <div class="card stage">
+    <div class="num">Stage 2</div>
+    <h3>Optional D-FINE pseudo labels</h3>
+    <div class="path">yolo/generate_pseudo_labels.py</div>
+    <p class="io"><b>In</b> unlabeled images, a D-FINE-S/M/L/X checkpoint, <code>--confidence</code> (0.5)</p>
+    <p class="io"><b>Out</b> extra label files merged into the prepared split</p>
+    <ul>
+      <li>Accepts an 80-class or a 5-class checkpoint. Boxes are mapped into the project classes; anything outside the five is dropped.</li>
+      <li>Only unlabeled images are annotated. Held-out validation cameras are excluded, so pseudo labels cannot leak into the measured split.</li>
+      <li>Human labels always win and the merge is idempotent: re-running does not duplicate a pseudo box.</li>
+      <li>Skip this stage entirely if you already have enough labeled data.</li>
+    </ul>
+  </div>
+
+  <div class="card stage">
+    <div class="num">Stage 3</div>
+    <h3>Train or resume YOLO11n</h3>
+    <div class="path">yolo/train_yolo.py</div>
+    <p class="io"><b>In</b> prepared <code>data.yaml</code>, <code>yolo11n.pt</code> COCO weights</p>
+    <p class="io"><b>Out</b> <code>runs/baseline/weights/best.pt</code>, <code>results.csv</code>, per-epoch validation</p>
+    <ul>
+      <li>Defaults: 640 px, 30 epochs, seed 0, deterministic, 2 workers. AMP is off unless you pass <code>--amp</code>.</li>
+      <li><code>data.yaml</code> is checked first: class names and order must match the project convention.</li>
+      <li>A pruned checkpoint is refused here. Pruning is one-way in this project, so a pruned model cannot re-enter training.</li>
+      <li><code>--resume</code> restores optimizer, scheduler, scaler, EMA and RNG state, not just weights.</li>
+      <li>The recorded Kaggle run used 15 epochs and batch 32 on a Tesla T4: 0.863 h, 10.2 GB per epoch, best epoch 14.</li>
+    </ul>
+  </div>
+
+  <div class="card stage">
+    <div class="num">Stage 4</div>
+    <h3>Prune channels</h3>
+    <div class="path">yolo/prune_yolo.py</div>
+    <p class="io"><b>In</b> <code>best.pt</code>, the same <code>data.yaml</code>, <code>--prune-ratio</code> (0.1)</p>
+    <p class="io"><b>Out</b> <code>pruned.pt</code> and <code>pruning.json</code></p>
+    <ul>
+      <li>Torch-Pruning groups find channels that can only be removed together. Channels are then deleted physically, not masked, and rounded to <code>--round-to 8</code>.</li>
+      <li>Every candidate starts from the same baseline. 10% and 20% are separate models, never a chain.</li>
+      <li>Zero optimizer steps: no recovery fine-tuning, no distillation, no INT8. The reported accuracy is what the pruned weights score as-is.</li>
+      <li>The report records per-layer channels before and after, the removed indices and the parameter reduction.</li>
+    </ul>
+  </div>
+
+  <div class="card stage">
+    <div class="num">Stage 5</div>
+    <h3>Export FP32 ONNX</h3>
+    <div class="path">yolo/export_yolo.py</div>
+    <p class="io"><b>In</b> a checkpoint, <code>--image-size</code> (512, 640 or 960), an optional real test image</p>
+    <p class="io"><b>Out</b> <code>model.onnx</code> plus <code>model.json</code></p>
+    <ul>
+      <li>Static batch-1 <code>[1,3,S,S]</code> FP32 input, opset 17, postprocessing folded in, so the output is raw <code>[1,9,N]</code>.</li>
+      <li>Output is compared against PyTorch on random input and on the real image before the export is accepted.</li>
+      <li>The sidecar carries model family, class order, precision, image size, parameter count, ONNX SHA-256 and how many samples were verified.</li>
+      <li>The runtime refuses to load an ONNX file that does not match its sidecar, so a stale pair cannot be measured by accident.</li>
+    </ul>
+  </div>
+
+  <div class="card stage">
+    <div class="num">Stage 6</div>
+    <h3>Benchmark, evaluate, compare</h3>
+    <div class="path">yolo/benchmark_yolo.py · yolo/evaluate_yolo.py · yolo/compare_cpp.py</div>
+    <p class="io"><b>In</b> exported ONNX models, prepared split or the original test JSON</p>
+    <p class="io"><b>Out</b> <code>summary.json</code>, per-image and per-class CSV, <code>report.md</code>, <code>selection.json</code></p>
+    <ul>
+      <li>Each measurement runs in an isolated process: 20 warm-up passes, 100 repeats, 3 trials, threads 1/2/4. AP is computed at confidence 0.001 with multi-label so the whole precision-recall curve survives.</li>
+      <li>Selection keeps the lowest pipeline p95 within 2 AP points of the baseline. The test split is scored once, with <code>--selected</code>, so the choice is not made on the test data.</li>
+      <li><code>evaluate_yolo.py</code> scores every image in the original COCO test JSON: AP, fixed-threshold precision/recall/F1, TP/(TP+FP+FN), latency percentiles and RSS.</li>
+      <li><code>compare_cpp.py</code> runs Python, C++ fresh buffers and C++ reused buffers over the same images in rotating order and fails the run on any input-tensor, raw-output, box or score difference.</li>
+    </ul>
+  </div>
+
+  <div class="card stage">
+    <div class="num">Stage 7</div>
+    <h3>Package for a CPU machine</h3>
+    <div class="path">yolo/package_local.py · Dockerfile</div>
+    <p class="io"><b>In</b> a model folder, optional prepared <code>data.yaml</code></p>
+    <p class="io"><b>Out</b> <code>yolo_local.zip</code>, or a Docker image</p>
+    <ul>
+      <li>The zip holds the inference runtime, the ONNX files with their sidecars, real copies of the validation images, the two requirements files and <code>LOCAL.md</code>. No torch, no training code.</li>
+      <li>Bundle paths are an allowlist, so a module that is not needed for inference never ships.</li>
+      <li>The Docker image is <code>python:3.11.14-slim-bookworm</code> with <code>evaluate_yolo</code> as the entrypoint. The dataset is mounted read-only at <code>/data</code>.</li>
+    </ul>
+  </div>
+
+</div>
 
 <h2 id="layout">Repo layout</h2>
 <div class="card">

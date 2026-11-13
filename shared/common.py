@@ -45,6 +45,27 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
 
 
+def resolve_image(root, name):
+    """Resolve an image name under root, rejecting absolute or escaping paths."""
+    root = Path(root).resolve()
+    relative = Path(name)
+    path = (root / relative).resolve()
+    if relative.is_absolute() or ".." in relative.parts or not path.is_relative_to(root):
+        raise ValueError(f"Image name must remain within {root}: {relative}")
+    return path
+
+
+def coco_detection(image_id, label, box, score):
+    """One COCO prediction record from an XYXY box."""
+    x1, y1, x2, y2 = map(float, box)
+    return {
+        "image_id": image_id,
+        "category_id": int(label),
+        "bbox": [x1, y1, x2 - x1, y2 - y1],
+        "score": float(score),
+    }
+
+
 def camera_scene(filename):
     match = re.search(r"camera(\d+)_([MAEN])_", Path(filename).name, re.IGNORECASE)
     return (int(match[1]), match[2].upper()) if match else None

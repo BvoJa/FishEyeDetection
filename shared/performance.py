@@ -1,14 +1,71 @@
-"""Throughput from recorded serial, batch-one CPU measurements."""
+"""Throughput, timing and host facts from recorded serial, batch-one CPU measurements."""
 
 import math
+import os
+import platform
+import threading
+from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
+
+STAGES = (
+    "preprocess",
+    "inference",
+    "postprocess",
+    "pipeline",
+    "image_decode",
+    "request",
+)
+FPS_STAGES = ("inference", "pipeline", "request")
 
 FPS_SCOPES = {
     "inference_fps": "ONNX model execution only",
     "pipeline_fps": "RGB preprocessing + ONNX inference + coordinate restoration/NMS",
     "request_fps": "Image reading/decoding + deployment pipeline",
 }
+
+
+def cpu_name():
+    """Human-readable CPU model, with a portable fallback."""
+    if Path("/proc/cpuinfo").is_file():
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    return platform.processor() or platform.machine()
+
+
+def usable_threads(requested):
+    """Clamp requested threads to physical cores and CPU affinity."""
+    import psutil
+
+    physical = psutil.cpu_count(logical=False) or os.cpu_count() or 1
+    available = (
+        len(os.sched_getaffinity(0))
+        if hasattr(os, "sched_getaffinity")
+        else os.cpu_count() or 1
+    )
+    return min(requested, physical, available), physical, available
+
+
+@contextmanager
+def peak_memory(process):
+    """Sample process RSS in the background and yield a one-element peak list."""
+    peak = [process.memory_info().rss]
+    stop = threading.Event()
+
+    def monitor():
+        while not stop.wait(0.005):
+            peak[0] = max(peak[0], process.memory_info().rss)
+
+    watcher = threading.Thread(target=monitor, daemon=True)
+    watcher.start()
+    try:
+        yield peak
+    finally:
+        stop.set()
+        watcher.join()
+        peak[0] = max(peak[0], process.memory_info().rss)
 
 
 def throughput_fps(latencies_ms):

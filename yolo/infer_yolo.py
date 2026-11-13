@@ -6,9 +6,17 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from efficient_detection.shared.common import CLASSES, EXTENSIONS, read_json, write_json
+from efficient_detection.shared.common import (
+    CLASSES,
+    EXTENSIONS,
+    coco_detection,
+    read_json,
+    resolve_image,
+    write_json,
+)
 from efficient_detection.shared.performance import (
     FPS_SCOPES,
+    FPS_STAGES,
     throughput_fps,
     timing_statistics,
 )
@@ -58,10 +66,7 @@ def run(
         raise ValueError("No input images")
 
     def image_path(record):
-        relative = Path(record["file_name"])
-        if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError("Image names must be relative paths within the image root")
-        return images / relative if images.is_dir() else images
+        return resolve_image(images, record["file_name"]) if images.is_dir() else images
 
     session = YoloSession(model, threads, optimization)
     with Image.open(image_path(records[0])) as source:
@@ -92,14 +97,7 @@ def run(
             result["labels"], result["boxes"], result["scores"]
         ):
             x1, y1, x2, y2 = map(float, box)
-            predictions.append(
-                {
-                    "image_id": record["id"],
-                    "category_id": int(label),
-                    "bbox": [x1, y1, x2 - x1, y2 - y1],
-                    "score": float(score),
-                }
-            )
+            predictions.append(coco_detection(record["id"], label, box, score))
             if save_images:
                 draw.rectangle([x1, y1, x2, y2], outline="lime", width=2)
                 draw.text(
@@ -129,7 +127,7 @@ def run(
         "save_images": save_images,
         **{
             f"{stage}_fps": throughput_fps(row[stage] for row in timings)
-            for stage in ["inference", "pipeline", "request"]
+            for stage in FPS_STAGES
         },
         "fps_scope": {
             **FPS_SCOPES,

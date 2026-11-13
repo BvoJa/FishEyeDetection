@@ -38,10 +38,10 @@ execution while preserving shared imports.
 ```
 
 Import [notebooks/yolo_train.ipynb](notebooks/yolo_train.ipynb) or use its cells in
-your Kaggle notebook after changing to this directory. The notebook reads the
-current directory with `Path.cwd()` and runs files such as `yolo/train_yolo.py`
-directly. Enable GPU and Internet and edit the attached dataset/checkpoint paths.
-The notebook leaves cloning and directory selection to your own setup cell.
+your Kaggle notebook. The notebook clones or updates this repository into
+`/kaggle/working/efficient_detection` itself and then runs files such as
+`yolo/train_yolo.py` directly. Enable GPU and Internet and edit the attached
+dataset/checkpoint paths.
 
 ```text
 efficient_detection/               # Current working directory / Git checkout

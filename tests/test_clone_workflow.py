@@ -118,10 +118,15 @@ def test_notebook_uses_current_directory_and_direct_files(
     notebook = json.loads((PROJECT / "notebooks" / filename).read_text())
     monkeypatch.chdir(standalone_clone)
     namespace = {}
-    run_cell("".join(notebook["cells"][1]["source"]), namespace)
+    cells = [
+        "".join(cell["source"])
+        for cell in notebook["cells"]
+        if cell["cell_type"] == "code"
+    ]
+    run_cell(next(cell for cell in cells if "REPO = Path.cwd()" in cell), namespace)
     assert namespace["REPO"] == standalone_clone
     assert namespace["WORK"].parent == standalone_clone.parent
-    dependency_cell = ast.parse("".join(notebook["cells"][3]["source"]))
+    dependency_cell = ast.parse(next(cell for cell in cells if "def run(" in cell))
     runner = next(
         node
         for node in dependency_cell.body

@@ -11,6 +11,7 @@ from efficient_detection.shared.common import (
     EXTENSIONS,
     camera_scene,
     read_json,
+    resolve_image,
     sha256,
 )
 
@@ -169,9 +170,7 @@ def load_coco(annotation, image_dir, prefix="source0", category_map=None):
         if relative.as_posix() in filenames:
             raise ValueError(f"Duplicate COCO image filename: {relative}")
         filenames.add(relative.as_posix())
-        if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError(f"COCO file_name must be relative to --images: {relative}")
-        path = (Path(image_dir) / relative).resolve()
+        path = resolve_image(image_dir, relative)
         with Image.open(path) as pil:
             width, height = pil.size
         if (width, height) != (image["width"], image["height"]):

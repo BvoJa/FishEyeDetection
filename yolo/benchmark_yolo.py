@@ -7,7 +7,6 @@ import multiprocessing
 import os
 import platform
 import random
-import threading
 import time
 import traceback
 from pathlib import Path
@@ -15,14 +14,17 @@ from pathlib import Path
 from PIL import Image
 
 from efficient_detection.shared.common import (
+    coco_detection,
     dataset_config,
     read_json,
+    resolve_image,
     sha256,
     write_json,
 )
 from efficient_detection.shared.evaluation import evaluate_predictions
 from efficient_detection.shared.performance import (
     FPS_SCOPES,
+    peak_memory,
     throughput_fps,
     timing_statistics,
 )
@@ -37,22 +39,14 @@ def accuracy(model, root, split="val", threads=4):
     session = YoloSession(model, threads)
     detections = []
     for image in truth["images"]:
-        with Image.open(root / "images" / image["file_name"]) as source:
+        with Image.open(resolve_image(root / "images", image["file_name"])) as source:
             result = session.predict(
                 source.convert("RGB"), confidence=0.001, multi_label=True
             )
         for label, box, score in zip(
             result["labels"], result["boxes"], result["scores"]
         ):
-            x1, y1, x2, y2 = map(float, box)
-            detections.append(
-                {
-                    "image_id": image["id"],
-                    "category_id": int(label),
-                    "bbox": [x1, y1, x2 - x1, y2 - y1],
-                    "score": float(score),
-                }
-            )
+            detections.append(coco_detection(image["id"], label, box, score))
     return evaluate_predictions(annotation, detections)[0]
 
 
@@ -68,17 +62,7 @@ def measure(
 ):
     import psutil
 
-    process = psutil.Process()
-    stop = threading.Event()
-    peak = [process.memory_info().rss]
-
-    def monitor():
-        while not stop.wait(0.005):
-            peak[0] = max(peak[0], process.memory_info().rss)
-
-    watcher = threading.Thread(target=monitor, daemon=True)
-    watcher.start()
-    try:
+    with peak_memory(psutil.Process()) as peak:
         images = []
         for path in paths:
             with Image.open(path) as image:
@@ -94,10 +78,6 @@ def measure(
                 timings.append(
                     session.predict(images[index % len(images)])["timing_ms"]
                 )
-        peak[0] = max(peak[0], process.memory_info().rss)
-    finally:
-        stop.set()
-        watcher.join()
     result = {
         "threads": threads,
         "graph_optimization": optimization,

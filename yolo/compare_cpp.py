@@ -2,7 +2,6 @@
 
 import argparse
 import csv
-import os
 import platform
 import random
 import resource
@@ -13,29 +12,28 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-import psutil
 from PIL import Image
 
 from efficient_detection.shared.common import (
     CLASSES,
     EXTENSIONS,
     box_iou,
+    coco_detection,
     read_json,
+    resolve_image,
     sha256,
     write_json,
 )
 from efficient_detection.shared.metrics import detection_counts, metrics_from_counts
-from efficient_detection.shared.performance import throughput_fps, timing_statistics
+from efficient_detection.shared.performance import (
+    FPS_STAGES,
+    STAGES,
+    cpu_name,
+    throughput_fps,
+    timing_statistics,
+    usable_threads,
+)
 from efficient_detection.yolo.runtime import YoloSession, letterbox
-
-STAGES = [
-    "preprocess",
-    "inference",
-    "postprocess",
-    "pipeline",
-    "image_decode",
-    "request",
-]
 
 
 def load_config(path):
@@ -49,25 +47,17 @@ def load_config(path):
     return config
 
 
-def image_path(images, record):
-    relative = Path(record["file_name"])
-    root = Path(images).resolve()
-    path = (root / relative).resolve()
-    if (
-        relative.is_absolute()
-        or ".." in relative.parts
-        or not path.is_relative_to(root)
-    ):
-        raise ValueError(f"Image name must remain within image root: {relative}")
-    return path
-
-
-def cpu_name():
-    if Path("/proc/cpuinfo").is_file():
-        for line in Path("/proc/cpuinfo").read_text().splitlines():
-            if line.startswith("model name"):
-                return line.split(":", 1)[1].strip()
-    return platform.processor() or platform.machine()
+def timing_summary(rows):
+    """Per-stage statistics and FPS from measured per-image rows."""
+    timing = {
+        stage: timing_statistics([row["timing_ms"][stage] for row in rows])
+        for stage in STAGES
+    }
+    fps = {
+        f"{stage}_fps": throughput_fps(row["timing_ms"][stage] for row in rows)
+        for stage in FPS_STAGES
+    }
+    return timing, fps
 
 
 def python_worker(config):
@@ -80,7 +70,7 @@ def python_worker(config):
     startup_ms = (time.perf_counter() - start) * 1000
     for index in range(config["warmup"]):
         with Image.open(
-            image_path(config["images"], records[index % len(records)])
+            resolve_image(config["images"], records[index % len(records)]["file_name"])
         ) as source:
             session.predict(
                 source.convert("RGB"), config["confidence"], config["nms_iou"]
@@ -89,7 +79,7 @@ def python_worker(config):
     dataset_started = time.perf_counter()
     for index, record in enumerate(records):
         started = time.perf_counter()
-        with Image.open(image_path(config["images"], record)) as source:
+        with Image.open(resolve_image(config["images"], record["file_name"])) as source:
             image = source.convert("RGB")
         decoded = time.perf_counter()
         result = session.predict(
@@ -113,15 +103,7 @@ def python_worker(config):
         for box, score, label in zip(
             result["boxes"], result["scores"], result["labels"]
         ):
-            x1, y1, x2, y2 = map(float, box)
-            predictions.append(
-                {
-                    "image_id": record["id"],
-                    "category_id": int(label),
-                    "bbox": [x1, y1, x2 - x1, y2 - y1],
-                    "score": float(score),
-                }
-            )
+            predictions.append(coco_detection(record["id"], label, box, score))
         if index < config["dump_tensors"]:
             folder = output / "tensors"
             folder.mkdir(exist_ok=True)
@@ -129,6 +111,7 @@ def python_worker(config):
             pixels.tofile(folder / f"{index}_input.f32")
             result["raw"].tofile(folder / f"{index}_raw.f32")
     dataset_seconds = time.perf_counter() - dataset_started
+    timing, fps = timing_summary(rows)
     summary = {
         "runtime": "python",
         "model": config["model"],
@@ -143,15 +126,9 @@ def python_worker(config):
         "dataset_fps": len(rows) / dataset_seconds,
         "peak_process_rss_mib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         / 1024,
-        "timing": {
-            stage: timing_statistics([row["timing_ms"][stage] for row in rows])
-            for stage in STAGES
-        },
+        "timing": timing,
+        **fps,
     }
-    for stage in ["inference", "pipeline", "request"]:
-        summary[f"{stage}_fps"] = throughput_fps(
-            row["timing_ms"][stage] for row in rows
-        )
     write_json(output / "per_image.json", rows)
     write_json(output / "predictions.json", predictions)
     write_json(output / "summary.json", summary)
@@ -433,14 +410,8 @@ def compare(config):
         Path(config["project_root"]) / "cpp/src/main.cpp"
     ):
         raise ValueError("C++ source changed; rebuild using cpp/build.py")
-    physical = psutil.cpu_count(logical=False) or os.cpu_count() or 1
-    available = (
-        len(os.sched_getaffinity(0))
-        if hasattr(os, "sched_getaffinity")
-        else os.cpu_count() or 1
-    )
     config["requested_threads"] = config["threads"]
-    config["threads"] = min(config["threads"], physical, available)
+    config["threads"], physical, available = usable_threads(config["threads"])
     source = read_json(config["annotations"]) if config.get("annotations") else None
     records = (
         source["images"]
@@ -462,7 +433,7 @@ def compare(config):
         raise ValueError("Need nonempty inputs with unique image IDs")
     manifest = []
     for row in records:
-        path = image_path(config["images"], row)
+        path = resolve_image(config["images"], row["file_name"])
         if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".bmp"}:
             raise ValueError(f"Unsupported C++ image format: {path}")
         manifest.append({**row, "sha256": sha256(path)})
@@ -554,11 +525,9 @@ def compare(config):
                         **{f"{stage}_ms": row["timing_ms"][stage] for stage in STAGES},
                     }
                 )
+        timing, fps = timing_summary(rows)
         result = {
-            "timing": {
-                stage: timing_statistics([row["timing_ms"][stage] for row in rows])
-                for stage in STAGES
-            },
+            "timing": timing,
             "peak_process_rss_mib": max(
                 row["peak_process_rss_mib"] for row in summaries
             ),
@@ -568,11 +537,8 @@ def compare(config):
             "trial_request_mean_ms": [
                 row["timing"]["request"]["mean_ms"] for row in summaries
             ],
+            **fps,
         }
-        for stage in ["inference", "pipeline", "request"]:
-            result[f"{stage}_fps"] = throughput_fps(
-                row["timing_ms"][stage] for row in rows
-            )
         if name.startswith("cpp"):
             result["buffers_per_trial"] = [row["buffers"] for row in summaries]
         backends[name] = result

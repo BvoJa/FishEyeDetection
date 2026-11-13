@@ -4,7 +4,6 @@ import argparse
 import csv
 import os
 import platform
-import threading
 import time
 from collections import Counter
 from importlib.metadata import version
@@ -16,7 +15,9 @@ from PIL import Image, ImageDraw
 
 from efficient_detection.shared.common import (
     CLASSES,
+    coco_detection,
     read_json,
+    resolve_image,
     sha256,
     validate_coco,
     write_json,
@@ -25,8 +26,13 @@ from efficient_detection.shared.evaluation import evaluate_predictions
 from efficient_detection.shared.metrics import detection_counts, metrics_from_counts
 from efficient_detection.shared.performance import (
     FPS_SCOPES,
+    FPS_STAGES,
+    STAGES,
+    cpu_name,
+    peak_memory,
     throughput_fps,
     timing_statistics,
+    usable_threads,
 )
 from efficient_detection.yolo.runtime import YoloSession, decode
 
@@ -144,37 +150,15 @@ def run(
         )
     source = read_json(annotations)
     for record in source["images"]:
-        relative = Path(record["file_name"])
-        if (
-            relative.is_absolute()
-            or ".." in relative.parts
-            or not (images / relative).resolve().is_relative_to(images.resolve())
-        ):
-            raise ValueError(f"Image path must remain within --images: {relative}")
+        resolve_image(images, record["file_name"])
     source = validate_coco(annotations, images)
     if not any(not row.get("iscrowd", 0) for row in source["annotations"]):
         raise ValueError(
             "AP evaluation needs at least one non-crowd ground-truth object"
         )
-    physical = psutil.cpu_count(logical=False) or os.cpu_count() or 1
-    available = (
-        len(os.sched_getaffinity(0))
-        if hasattr(os, "sched_getaffinity")
-        else os.cpu_count() or 1
-    )
     requested_threads = threads
-    threads = min(threads, physical, available)
+    threads, physical, available = usable_threads(threads)
     output.mkdir(parents=True, exist_ok=True)
-    process = psutil.Process()
-    stop = threading.Event()
-    peak = [process.memory_info().rss]
-
-    def monitor():
-        while not stop.wait(0.005):
-            peak[0] = max(peak[0], process.memory_info().rss)
-
-    watcher = threading.Thread(target=monitor, daemon=True)
-    watcher.start()
     predictions, deployment_predictions, rows = [], [], []
     counts_by_class = np.zeros((len(CLASSES), 4), dtype=np.int64)
     annotations_by_image = {}
@@ -182,7 +166,7 @@ def run(
         annotations_by_image.setdefault(annotation["image_id"], []).append(annotation)
     totals = Counter()
     empty_images = 0
-    try:
+    with peak_memory(psutil.Process()) as peak:
         started = time.perf_counter()
         session = YoloSession(model, threads)
         startup_ms = (time.perf_counter() - started) * 1000
@@ -237,14 +221,8 @@ def run(
             for label, box, score in zip(
                 result["labels"], result["boxes"], result["scores"]
             ):
-                x1, y1, x2, y2 = map(float, box)
                 deployment_predictions.append(
-                    {
-                        "image_id": record["id"],
-                        "category_id": int(label),
-                        "bbox": [x1, y1, x2 - x1, y2 - y1],
-                        "score": float(score),
-                    }
+                    coco_detection(record["id"], label, box, score)
                 )
             # Reuse the raw output; AP decoding is outside deployment latency.
             ap_result = decode(
@@ -257,15 +235,7 @@ def run(
             for label, box, score in zip(
                 ap_result["labels"], ap_result["boxes"], ap_result["scores"]
             ):
-                x1, y1, x2, y2 = map(float, box)
-                predictions.append(
-                    {
-                        "image_id": record["id"],
-                        "category_id": int(label),
-                        "bbox": [x1, y1, x2 - x1, y2 - y1],
-                        "score": float(score),
-                    }
-                )
+                predictions.append(coco_detection(record["id"], label, box, score))
             if save_images:
                 draw = ImageDraw.Draw(image)
                 for label, box, score in zip(
@@ -289,14 +259,9 @@ def run(
                     flush=True,
                 )
         dataset_seconds = time.perf_counter() - dataset_started
-        peak[0] = max(peak[0], process.memory_info().rss)
         inference_peak = peak[0]
         print("Computing COCO accuracy on all images...", flush=True)
         metrics, per_class = evaluate_predictions(annotations, predictions)
-        peak[0] = max(peak[0], process.memory_info().rss)
-    finally:
-        stop.set()
-        watcher.join()
     truth_counts = Counter(int(row["category_id"]) for row in source["annotations"])
     for row in per_class:
         row["ground_truth_objects"] = truth_counts[row["category_id"]]
@@ -318,14 +283,7 @@ def run(
     }
     timing = {
         name: timing_statistics([row[f"{name}_ms"] for row in rows])
-        for name in [
-            "preprocess",
-            "inference",
-            "postprocess",
-            "pipeline",
-            "image_decode",
-            "request",
-        ]
+        for name in STAGES
     }
     metadata = session.metadata
     summary = {
@@ -361,7 +319,7 @@ def run(
         "dataset_fps": len(rows) / dataset_seconds,
         **{
             f"{stage}_fps": throughput_fps(row[f"{stage}_ms"] for row in rows)
-            for stage in ["inference", "pipeline", "request"]
+            for stage in FPS_STAGES
         },
         "fps_scope": {
             **FPS_SCOPES,
@@ -376,15 +334,9 @@ def run(
         "memory_scope": "Sampled process RSS, including annotations and retained predictions; total peak includes COCO evaluation; output serialization excluded",
         "dataset_note": "Original FishEye8K test; if used for validation during training, these are validation results",
     }
-    cpu = platform.processor()
-    if Path("/proc/cpuinfo").is_file():
-        for line in Path("/proc/cpuinfo").read_text().splitlines():
-            if line.startswith("model name"):
-                cpu = line.split(":", 1)[1].strip()
-                break
     environment = {
         "platform": platform.platform(),
-        "cpu": cpu,
+        "cpu": cpu_name(),
         "physical_cores": physical,
         "logical_cores": os.cpu_count(),
         "available_logical_cpus": available,

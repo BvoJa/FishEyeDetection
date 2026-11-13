@@ -11,6 +11,7 @@ from efficient_detection.shared.common import (
     CLASSES,
     dataset_config,
     read_json,
+    resolve_image,
     sha256,
     write_json,
 )
@@ -70,11 +71,9 @@ def build_bundle(models, output, data=None):
             validation = root / "validation"
             for row in records:
                 relative = Path(row["file_name"])
-                if relative.is_absolute() or ".." in relative.parts:
-                    raise ValueError("Validation image paths must be relative")
                 target = validation / "images" / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(prepared / "images" / relative, target)
+                shutil.copy2(resolve_image(prepared / "images", relative), target)
             (validation / "annotations").mkdir(parents=True)
             shutil.copy2(
                 prepared / "annotations/val.json", validation / "annotations/val.json"

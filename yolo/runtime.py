@@ -69,11 +69,22 @@ def decode(
 
 
 class YoloSession:
-    def __init__(self, model, threads=4, optimization="all", profile=None):
+    def __init__(self, model, threads=4, optimization="all", profile=None, backend="onnxruntime"):
         import onnxruntime as ort
 
-        if threads < 1 or optimization not in {"off", "all"}:
-            raise ValueError("Use positive threads and graph optimization off/all")
+        levels = {
+            "off": ort.GraphOptimizationLevel.ORT_DISABLE_ALL,
+            "basic": ort.GraphOptimizationLevel.ORT_ENABLE_BASIC,
+            "extended": ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED,
+            "all": ort.GraphOptimizationLevel.ORT_ENABLE_ALL,
+        }
+        if threads < 1 or optimization not in levels:
+            raise ValueError(f"Use positive threads and graph optimization in {list(levels.keys())}")
+        if backend not in {"onnxruntime", "openvino"}:
+            raise ValueError("Use backend onnxruntime or openvino")
+        if backend == "openvino" and (profile or optimization != "all"):
+            raise ValueError("OpenVINO uses its own graph optimization and does not support ORT profiling")
+        self.backend = backend
         self.model = Path(model)
         metadata = self.model.with_suffix(".json")
         if not metadata.is_file():
@@ -88,17 +99,43 @@ class YoloSession:
         if (
             self.metadata.get("model_family") != "yolo11"
             or self.metadata.get("classes") != CLASSES
-            or self.metadata.get("precision") != "float32"
+            or self.metadata.get("precision") not in {"float32", "int8"}
         ):
-            raise ValueError("Expected this workflow's five-class FP32 YOLO11 export")
+            raise ValueError("Expected this workflow's five-class FP32 or INT8 YOLO11 export")
+        size = self.metadata["image_size"]
+        self.image_size = size
+        if backend == "openvino":
+            import openvino as ov
+
+            core = ov.Core()
+            graph = core.read_model(str(self.model))
+            if (
+                len(graph.inputs) != 1
+                or list(graph.input().shape) != [1, 3, size, size]
+                or graph.input().element_type != ov.Type.f32
+                or len(graph.outputs) != 1
+            ):
+                raise ValueError("Expected static batch-1 float32 NCHW input and one output")
+            self.input_name = graph.input().get_any_name()
+            self.session = core.compile_model(graph, "CPU", {
+                "PERFORMANCE_HINT": "LATENCY",
+                "NUM_STREAMS": 1,
+                "INFERENCE_NUM_THREADS": threads,
+                "ENABLE_CPU_PINNING": True,
+                "ENABLE_HYPER_THREADING": False,
+                "INFERENCE_PRECISION_HINT": ov.Type.f32,
+            })
+            self.request = self.session.create_infer_request()
+            self.runtime_settings = {
+                name: str(self.session.get_property(name))
+                for name in ["PERFORMANCE_HINT", "NUM_STREAMS", "INFERENCE_NUM_THREADS",
+                             "ENABLE_CPU_PINNING", "ENABLE_HYPER_THREADING", "INFERENCE_PRECISION_HINT"]
+            }
+            return
         options = ort.SessionOptions()
         options.intra_op_num_threads = threads
         options.inter_op_num_threads = 1
-        options.graph_optimization_level = (
-            ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            if optimization == "all"
-            else ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-        )
+        options.graph_optimization_level = levels[optimization]
         if profile:
             options.enable_profiling = True
             options.profile_file_prefix = str(profile)
@@ -122,7 +159,11 @@ class YoloSession:
         started = time.perf_counter()
         pixels, geometry = letterbox(image, self.image_size)
         preprocessed = time.perf_counter()
-        raw = self.session.run(None, {self.input_name: pixels})[0]
+        if self.backend == "openvino":
+            # Copy output because the reusable infer request owns its output buffers.
+            raw = self.request.infer({self.input_name: pixels})[self.session.output()].copy()
+        else:
+            raw = self.session.run(None, {self.input_name: pixels})[0]
         inferred = time.perf_counter()
         result = decode(raw, geometry, confidence, nms_iou, multi_label=multi_label)
         completed = time.perf_counter()

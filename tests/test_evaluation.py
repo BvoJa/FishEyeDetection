@@ -82,9 +82,12 @@ def evaluation_input(tmp_path):
     return model, images, annotation
 
 
+@pytest.mark.parametrize("backend", ["onnxruntime", "openvino"])
 def test_full_evaluation_reuses_forward_preserves_ids_and_reports(
-    tmp_path, evaluation_input, monkeypatch
+    tmp_path, evaluation_input, monkeypatch, backend
 ):
+    if backend == "openvino":
+        pytest.importorskip("openvino")
     model, images, annotation = evaluation_input
     calls = []
     original = YoloSession.predict
@@ -96,7 +99,7 @@ def test_full_evaluation_reuses_forward_preserves_ids_and_reports(
     monkeypatch.setattr(YoloSession, "predict", counted)
     output = tmp_path / "report"
     summary = run(
-        model, images, annotation, output, threads=1, warmup=3, save_images=True
+        model, images, annotation, output, threads=1, warmup=3, save_images=True, backend=backend
     )
     assert calls == [False, False, False, True, True]
     assert (
@@ -140,6 +143,7 @@ def test_full_evaluation_reuses_forward_preserves_ids_and_reports(
     )
     assert "0.001" in (output / "report.md").read_text()
     assert "FPS (images/s)" in (output / "report.md").read_text()
+    assert "float32 batch 1" in (output / "report.md").read_text()
     assert "torch" not in read_json(output / "environment.json")["versions"]
 
 

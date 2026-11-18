@@ -54,7 +54,7 @@ def write_report(path, summary, per_class):
     lines = [
         "# FishEye8K CPU evaluation",
         "",
-        f"Model: `{summary['model']}`; FP32 batch 1; {summary['image_size']} px; {summary['threads']} CPU threads.",
+        f"Model: `{summary['model']}`; {summary['precision']} batch 1; {summary['image_size']} px; {summary['threads']} CPU threads.",
         f"Processed **{summary['images']} / {summary['expected_images']} images**; deployment detections: **{summary['detections']}**.",
         "",
         "| AP50:95 (%) | AP50 (%) | AP75 (%) | AP small (%) |",
@@ -130,6 +130,7 @@ def run(
     ap_confidence=0.001,
     save_images=False,
     match_iou=0.5,
+    backend="onnxruntime",
 ):
     model, images, annotations, output = map(Path, (model, images, annotations, output))
     if threads < 1 or warmup < 0 or not 0 <= confidence <= 1 or not 0 <= nms_iou <= 1:
@@ -168,7 +169,7 @@ def run(
     empty_images = 0
     with peak_memory(psutil.Process()) as peak:
         started = time.perf_counter()
-        session = YoloSession(model, threads)
+        session = YoloSession(model, threads, backend=backend)
         startup_ms = (time.perf_counter() - started) * 1000
         with Image.open(images / source["images"][0]["file_name"]) as image:
             first = image.convert("RGB")
@@ -303,10 +304,12 @@ def run(
         "batch_size": 1,
         "parameters": metadata.get("parameters", 0),
         "model_size_mib": model.stat().st_size / 1024**2,
-        "provider": "CPUExecutionProvider",
+        "provider": "OpenVINO CPU" if backend == "openvino" else "CPUExecutionProvider",
+        "backend": backend,
+        "runtime_settings": getattr(session, "runtime_settings", {}),
         "requested_threads": requested_threads,
         "threads": threads,
-        "graph_optimization": "all",
+        "graph_optimization": "OpenVINO compile_model" if backend == "openvino" else "all",
         "confidence": confidence,
         "ap_confidence": ap_confidence,
         "nms_iou": nms_iou,
@@ -347,6 +350,9 @@ def run(
             for name in ["numpy", "Pillow", "onnxruntime", "psutil", "faster-coco-eval"]
         },
     }
+    if backend == "openvino":
+        environment["versions"]["openvino"] = version("openvino")
+    environment["cpu_affinity"] = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None
     write_json(output / "predictions.json", predictions)
     write_json(output / "deployment_predictions.json", deployment_predictions)
     write_json(output / "summary.json", summary)
@@ -373,6 +379,7 @@ def main():
     parser.add_argument("--annotations", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--backend", choices=["onnxruntime", "openvino"], default="onnxruntime")
     parser.add_argument("--confidence", type=float, default=0.25)
     parser.add_argument("--nms-iou", type=float, default=0.7)
     parser.add_argument("--ap-confidence", type=float, default=0.001)

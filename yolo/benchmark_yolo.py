@@ -196,7 +196,10 @@ def main():
     parser.add_argument("--split", choices=["val", "test"], default="val")
     parser.add_argument("--threads", type=int, nargs="+", default=[1, 2, 4])
     parser.add_argument(
-        "--graph-optimizations", choices=["off", "all"], nargs="+", default=["all"]
+        "--graph-optimizations",
+        choices=["off", "basic", "extended", "all"],
+        nargs="+",
+        default=["all"],
     )
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--repeats", type=int, default=100)

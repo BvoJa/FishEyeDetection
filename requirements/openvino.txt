@@ -1,0 +1,2 @@
+-r evaluation.lock.txt
+openvino==2026.4.1

@@ -34,6 +34,19 @@ Only the selected ONNX/JSON pair is copied into the final image. To package anot
 export, supply both `--build-arg MODEL=models/other.onnx` and
 `--build-arg MODEL_METADATA=models/other.json`.
 
+The build requires BuildKit (the default in current Docker). Dependency layers
+precede application installation, so source edits reuse the installed dependencies.
+BuildKit keeps pip downloads in a cache outside the image, including when the lock
+file changes. The application wheel is mounted from the builder rather than copied
+into an image layer. Model changes reuse the runtime and application layers.
+Repeat the build command to check that unchanged steps show `CACHED`.
+Verify the builder with `docker buildx version`; on Arch Linux, install it with
+`sudo pacman -S docker-buildx` if missing.
+
+On Linux, Docker must be running before building (`sudo systemctl start docker`).
+If Docker reports socket permission denied, use your configured Docker access or
+run the Docker commands with `sudo`.
+
 ## Run all 2,712 test images
 
 Create a fresh output directory, then run:
@@ -150,6 +163,42 @@ These F1 metrics use the documented fixed matching IoU (default 0.5). They are n
 the official AICITY leaderboard F1. Small-object AP uses standard COCO area ranges,
 not the competition's modified size ranges. The Docker image runs the Python CPU
 evaluator; native C++ runs separately as described in [CPP.md](CPP.md).
+
+## Optional OpenVINO CPU experiment
+
+Build the optional target; the default image remains ONNX Runtime only:
+
+```bash
+docker build --target openvino -t efficient-detection:openvino-fp32 .
+mkdir -p reports/openvino_fp32
+docker run --rm --network none --cpuset-cpus 0,2,4,6 \
+  --user "$(id -u):$(id -g)" \
+  -v "$(pwd)/datasets/Fisheye8K/test:/data:ro" \
+  -v "$(pwd)/reports/openvino_fp32:/output" \
+  efficient-detection:openvino-fp32
+```
+
+CPU IDs `0,2,4,6` are the four physical P-cores on the tested i7-1360P;
+check topology before using those IDs on another machine. This target pins
+OpenVINO 2026.4.1 and uses CPU latency mode, one stream, four inference threads,
+CPU pinning, no hyperthreading, and an FP32 inference precision hint. The precision
+hint keeps floating-point operations in FP32 while allowing the imported QDQ
+model's quantized operations. Models are compiled directly from ONNX at startup;
+compilation and warm-up are outside measured inference latency.
+
+To evaluate the existing U8S8 model using the same image, mount `models` read-only
+at `/models` and supply the full argument list after the image name:
+
+```text
+--model /models/quant_qdq_640_u8s8.onnx --images /data/images
+--annotations /data/test.json --output /output --threads 4 --backend openvino
+```
+
+Use a fresh output directory for each run. The shared evaluator records the
+backend, effective OpenVINO settings, version and process CPU affinity. Preprocessing,
+decoding, thresholds, accuracy computation and timing scopes remain the same.
+The existing `generate_dtypes.py` selects calibration images from the test directory;
+accuracy for these quantized artifacts is not an untouched held-out result.
 
 ## Native comparison and reproducibility
 
